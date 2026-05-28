@@ -14,6 +14,9 @@ class MainWindow:
         self.root.title(lang.get('app_title'))
         self.root.geometry("1200x700")
         
+        # For exchange rate
+        self.current_rate = 92.50
+        
         # Make sure window is visible
         self.root.lift()
         self.root.focus_force()
@@ -42,12 +45,28 @@ class MainWindow:
         help_menu.add_command(label="About", command=self.show_about)
     
     def setup_toolbar(self):
-        """Create toolbar with language controls"""
+        """Create toolbar with currency, exchange rate, and language controls"""
         toolbar = ttk.Frame(self.root)
         toolbar.pack(fill='x', padx=5, pady=5)
         
-        # Language toggle
-        ttk.Label(toolbar, text="Language:").pack(side='left', padx=(10, 5))
+        # Currency Selector
+        ttk.Label(toolbar, text="Currency:").pack(side='left', padx=(10, 5))
+        self.currency_var = tk.StringVar(value="RUB")
+        currency_combo = ttk.Combobox(toolbar, textvariable=self.currency_var,
+                                       values=["RUB", "USD"], width=8, state='readonly')
+        currency_combo.pack(side='left', padx=5)
+        currency_combo.bind('<<ComboboxSelected>>', self.change_currency)
+        
+        # Exchange Rate Display & Update Button
+        self.rate_label = ttk.Label(toolbar, text="USD/RUB: --")
+        self.rate_label.pack(side='left', padx=10)
+        
+        self.update_rate_btn = ttk.Button(toolbar, text="Update Rate", 
+                                           command=self.update_exchange_rate)
+        self.update_rate_btn.pack(side='left', padx=5)
+        
+        # Language Toggle
+        ttk.Label(toolbar, text="Language:").pack(side='left', padx=(20, 5))
         self.lang_var = tk.StringVar(value="EN" if lang.current_lang == 'en' else "RU")
         lang_combo = ttk.Combobox(toolbar, textvariable=self.lang_var,
                                    values=["EN", "RU"], width=5, state='readonly')
@@ -57,6 +76,72 @@ class MainWindow:
         # User info (right side)
         user_label = ttk.Label(toolbar, text=f"User: {self.current_user['username']} ({self.current_user['role']})")
         user_label.pack(side='right', padx=10)
+        
+        # Load current exchange rate
+        self.load_exchange_rate()
+    
+    def load_exchange_rate(self):
+        """Load the latest USD/RUB rate from database"""
+        try:
+            rate_row = db.fetch_one("SELECT usd_to_rub_rate FROM exchange_rates ORDER BY rate_date DESC LIMIT 1")
+            if rate_row:
+                self.current_rate = rate_row['usd_to_rub_rate']
+                self.rate_label.config(text=f"USD/RUB: {self.current_rate:.2f}")
+            else:
+                self.current_rate = 92.50
+                self.rate_label.config(text=f"USD/RUB: {self.current_rate:.2f} (default)")
+        except Exception as e:
+            print(f"Error loading exchange rate: {e}")
+            self.current_rate = 92.50
+            self.rate_label.config(text="USD/RUB: --")
+    
+    def change_currency(self, event=None):
+        """Handle currency display toggle"""
+        selected = self.currency_var.get()
+        print(f"Currency changed to: {selected}")
+        # For now just show a message - full implementation later
+        messagebox.showinfo("Currency", f"Display currency set to {selected}\n(Full implementation coming with payment modules)")
+    
+    def update_exchange_rate(self):
+        """Open dialog to manually update USD/RUB rate"""
+        dialog = tk.Toplevel(self.root)
+        dialog.title("Update Exchange Rate")
+        dialog.geometry("400x250")
+        dialog.transient(self.root)
+        dialog.grab_set()
+        
+        tk.Label(dialog, text="Current USD to RUB rate:", font=('Arial', 10)).pack(pady=10)
+        current_rate_label = tk.Label(dialog, text=f"{self.current_rate:.2f}", font=('Arial', 12, 'bold'))
+        current_rate_label.pack(pady=5)
+        
+        tk.Label(dialog, text="New rate (RUB per 1 USD):").pack(pady=10)
+        rate_entry = tk.Entry(dialog, width=15)
+        rate_entry.pack(pady=5)
+        rate_entry.focus()  # Set focus to the entry field
+        
+        def save_rate():
+            try:
+                new_rate = float(rate_entry.get())
+                if new_rate <= 0:
+                    raise ValueError
+                from datetime import date
+                today = date.today().isoformat()
+                # Using db.execute_query which handles connection
+                db.execute_query("""
+                    INSERT OR REPLACE INTO exchange_rates (rate_date, usd_to_rub_rate, source, notes, created_by)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (today, new_rate, 'manual', 'User update', self.current_user['username']))
+                self.current_rate = new_rate
+                self.rate_label.config(text=f"USD/RUB: {new_rate:.2f}")
+                dialog.destroy()
+                messagebox.showinfo("Success", f"Exchange rate updated to {new_rate:.2f} RUB/USD")
+            except ValueError:
+                messagebox.showerror("Error", "Please enter a valid positive number")
+        
+        # Bind Enter key to save_rate function
+        rate_entry.bind('<Return>', lambda event: save_rate())
+        
+        tk.Button(dialog, text="Save", command=save_rate, bg='#0078d4', fg='white').pack(pady=10)
     
     def setup_tabs(self):
         """Create tabbed interface"""
