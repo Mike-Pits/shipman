@@ -103,6 +103,27 @@ class DatabaseManager:
             )
         """)
         
+        # ... existing tables ...
+
+        # Exchange rates table (required for currency features)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS exchange_rates (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                rate_date DATE NOT NULL UNIQUE,
+                usd_to_rub_rate REAL NOT NULL,
+                source TEXT DEFAULT 'manual',
+                notes TEXT,
+                created_by TEXT,
+                created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+            )
+        """)
+
+        # Insert a default rate if none exists (today's rate, e.g., 92.50)
+        conn.execute("""
+            INSERT OR IGNORE INTO exchange_rates (rate_date, usd_to_rub_rate, source, notes)
+            VALUES (date('now'), 92.50, 'default', 'Initial rate')
+        """)
+
         # Audit log table
         conn.execute("""
             CREATE TABLE IF NOT EXISTS audit_log (
