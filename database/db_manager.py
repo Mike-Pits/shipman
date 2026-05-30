@@ -45,6 +45,18 @@ class DatabaseManager:
                 flag TEXT,
                 vessel_type TEXT,
                 deadweight_mt REAL,
+                loa REAL,
+                beam REAL,
+                me_power INTEGER,
+                IFO_under_way INTEGER,
+                IFO_idle REAL,
+                IFO_boiler REAL,
+                MGO_under_way REAL,
+                MGO_idle REAL,
+                MGO_discharging REAL,
+                MGO_IGS REAL,
+                speed_laden INTEGER,
+                speed_ballast INTEGER,
                 is_active BOOLEAN DEFAULT 1,
                 created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
             )
