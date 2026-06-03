@@ -174,19 +174,35 @@ class MainWindow:
             self.notebook.add(error_frame, text="Daily Reports")
             tk.Label(error_frame, text=f"Error loading daily reports: {e}", fg='red').pack(expand=True)
         
-        # Tab 4: Charter Parties (placeholder)
-        charter_frame = ttk.Frame(self.notebook)
-        self.notebook.add(charter_frame, text=lang.get('charter_parties_title'))
-        tk.Label(charter_frame, text="Charter Parties Module - Coming Soon", 
-                 font=('Arial', 14)).pack(expand=True)
-        
-        # Tab 5: Payments (placeholder)
+        # Tab 4: Charter Parties
+        try:
+            from modules.charter_parties import CharterPartyManager
+            self.charter_manager = CharterPartyManager(self.notebook, self.current_user)
+            self.notebook.add(self.charter_manager.frame, text=lang.get('charter_parties_title'))
+        except Exception as e:
+            print(f"Error loading charter parties module: {e}")
+            error_frame = ttk.Frame(self.notebook)
+            self.notebook.add(error_frame, text="Charter Parties")
+            tk.Label(error_frame, text=f"Error loading charter parties: {e}", fg='red').pack(expand=True)
+
+        # Tab 5: Voyages
+        try:
+            from modules.voyages import VoyageManager
+            self.voyage_manager = VoyageManager(self.notebook, self.current_user)
+            self.notebook.add(self.voyage_manager.frame, text=lang.get('voyages_title'))
+        except Exception as e:
+            print(f"Error loading voyages module: {e}")
+            error_frame = ttk.Frame(self.notebook)
+            self.notebook.add(error_frame, text="Voyages")
+            tk.Label(error_frame, text=f"Error loading voyages: {e}", fg='red').pack(expand=True)
+
+        # Tab 6: Payments (placeholder)
         payments_frame = ttk.Frame(self.notebook)
         self.notebook.add(payments_frame, text=lang.get('payments_title'))
         tk.Label(payments_frame, text="Payments Module - Coming Soon", 
                  font=('Arial', 14)).pack(expand=True)
         
-        # Tab 6: Reports (placeholder)
+        # Tab 7: Reports (placeholder)
         reports_frame = ttk.Frame(self.notebook)
         self.notebook.add(reports_frame, text=lang.get('reports_title'))
         tk.Label(reports_frame, text="Reports Module - Coming Soon", 
