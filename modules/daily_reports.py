@@ -125,7 +125,7 @@ class DailyReportManager:
             self.voyage_map = {}
             return
 
-        # Convert report_date to date if it's a string
+        # Convert report_date to date if needed
         if isinstance(report_date, str):
             try:
                 report_date = datetime.strptime(report_date, '%Y-%m-%d %H:%M:%S').date()
@@ -134,22 +134,25 @@ class DailyReportManager:
         elif report_date is None:
             report_date = datetime.now().date()
 
-        # Fetch all voyages for this vessel (ignore date range)
+        # Fetch all active voyages for this vessel (non-idle + idle)
         rows = db.fetch_all("""
-            SELECT v.id, v.voyage_number, v.load_port, v.discharge_port
+            SELECT v.id, v.voyage_number, v.load_port, v.discharge_port, v.is_idle
             FROM voyages v
             JOIN charter_parties c ON v.charter_party_id = c.id
             WHERE c.vessel_id = ?
-            ORDER BY v.start_date DESC
+            ORDER BY v.is_idle ASC, v.start_date DESC
         """, (self.current_vessel_id,))
 
         voyage_list = []
         self.voyage_map = {}
         for r in rows:
-            if r['voyage_number'] and r['voyage_number'].strip():
-                display = f"{r['voyage_number']} - {r['load_port']} → {r['discharge_port']}"
+            if r['is_idle']:
+                display = "🔄 IDLE (no charter)"
             else:
-                display = f"Voyage #{r['id']} ({r['load_port']} → {r['discharge_port']})"
+                if r['voyage_number'] and r['voyage_number'].strip():
+                    display = f"{r['voyage_number']} - {r['load_port']} → {r['discharge_port']}"
+                else:
+                    display = f"Voyage #{r['id']} ({r['load_port']} → {r['discharge_port']})"
             voyage_list.append(display)
             self.voyage_map[display] = r['id']
 

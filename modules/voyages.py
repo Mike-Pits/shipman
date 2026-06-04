@@ -119,8 +119,15 @@ class VoyageManager:
         if not selected:
             messagebox.showwarning("Warning", "Please select a voyage to delete")
             return
+        voyage_id = int(selected[0])
+        
+        # Check if this is an idle voyage
+        voyage = db.fetch_one("SELECT is_idle FROM voyages WHERE id = ?", (voyage_id,))
+        if voyage and voyage.get('is_idle'):
+            messagebox.showerror("Error", "Cannot delete the idle voyage. It is required for reporting idle periods.")
+            return
+        
         if messagebox.askyesno("Confirm", "Delete this voyage? All linked daily reports will be disassociated."):
-            voyage_id = int(selected[0])
             # Optionally set daily_reports.voyage_id = NULL for those linked
             db.execute_query("UPDATE daily_reports SET voyage_id = NULL WHERE voyage_id = ?", (voyage_id,))
             db.delete('voyages', voyage_id)
@@ -148,6 +155,11 @@ class VoyageDialog:
         main_frame = ttk.Frame(self.dialog, padding=20)
         main_frame.pack(fill='both', expand=True)
 
+        # Checkbox for idle voyage
+        self.idle_var = tk.BooleanVar(value=False)
+        self.idle_cb = ttk.Checkbutton(main_frame, text="Idle Voyage (no charter)", variable=self.idle_var, command=self.toggle_idle)
+        self.idle_cb.grid(row=0, column=0, columnspan=2, sticky='w', padx=5, pady=5)
+
         fields = [
             ('voyage_number', 'Voyage Number:'),
             ('load_port', 'Load Port:'),
@@ -161,7 +173,7 @@ class VoyageDialog:
         ]
 
         self.entries = {}
-        row = 0
+        row = 1
         for field, label in fields:
             tk.Label(main_frame, text=label).grid(row=row, column=0, sticky='e', padx=5, pady=5)
             if field == 'is_laden':
@@ -185,11 +197,52 @@ class VoyageDialog:
         ttk.Button(btn_frame, text="Save", command=self.save).pack(side='left', padx=5)
         ttk.Button(btn_frame, text="Cancel", command=self.dialog.destroy).pack(side='left', padx=5)
 
+    def toggle_idle(self):
+        if self.idle_var.get():
+            # Idle mode: preset fields
+            self.entries['voyage_number'].delete(0, tk.END)
+            self.entries['voyage_number'].insert(0, "IDLE")
+            self.entries['voyage_number'].config(state='readonly')
+            self.entries['load_port'].delete(0, tk.END)
+            self.entries['load_port'].insert(0, "Idle")
+            self.entries['load_port'].config(state='readonly')
+            self.entries['discharge_port'].delete(0, tk.END)
+            self.entries['discharge_port'].insert(0, "Idle")
+            self.entries['discharge_port'].config(state='readonly')
+            # Optional: clear start/end dates? Set to None
+            self.entries['start_date'].delete(0, tk.END)
+            self.entries['end_date'].delete(0, tk.END)
+        else:
+            # Re-enable fields
+            self.entries['voyage_number'].config(state='normal')
+            self.entries['load_port'].config(state='normal')
+            self.entries['discharge_port'].config(state='normal')
+            # Optionally clear IDLE values
+            if self.entries['voyage_number'].get() == "IDLE":
+                self.entries['voyage_number'].delete(0, tk.END)
+            if self.entries['load_port'].get() == "Idle":
+                self.entries['load_port'].delete(0, tk.END)
+            if self.entries['discharge_port'].get() == "Idle":
+                self.entries['discharge_port'].delete(0, tk.END)
+
     def load_data(self):
         voyage = db.fetch_one("SELECT * FROM voyages WHERE id = ?", (self.voyage_id,))
         if not voyage:
             return
 
+        is_idle = voyage.get('is_idle', 0)
+        self.idle_var.set(bool(is_idle))
+        self.toggle_idle()   # sets fields readonly etc.
+        
+        # If it's an idle voyage, disable the checkbox and prevent toggling
+        if is_idle:
+            self.idle_cb.config(state='disabled')
+            # Also maybe disable voyage_number, ports editing
+            self.entries['voyage_number'].config(state='readonly')
+            self.entries['load_port'].config(state='readonly')
+            self.entries['discharge_port'].config(state='readonly')
+        
+        # Fill other fields as before
         for field, widget in self.entries.items():
             value = voyage.get(field)
             if value is not None:
@@ -204,7 +257,7 @@ class VoyageDialog:
 
     def save(self):
         data = {}
-        # Collect values
+        # Collect all fields from the form
         for field, widget in self.entries.items():
             if field == 'is_laden':
                 val = self.laden_var.get()
@@ -221,8 +274,26 @@ class VoyageDialog:
             elif isinstance(widget, tk.Text):
                 val = widget.get('1.0', tk.END).strip()
                 data[field] = val if val else None
-            elif isinstance(widget, ttk.Combobox):
-                data[field] = widget.get()
+            elif isinstance(widget, ttk.Combobox) and field == 'is_laden':
+                # already handled above
+                pass
+            else:
+                # For combobox (only is_laden was there)
+                pass
+
+        # Idle voyage flag
+        data['is_idle'] = 1 if self.idle_var.get() else 0
+
+        # For idle voyages, ensure required fields are set properly
+        if data['is_idle']:
+            data['voyage_number'] = 'IDLE'
+            data['load_port'] = 'Idle'
+            data['discharge_port'] = 'Idle'
+            # Optionally set start/end dates to None (they are already cleared in toggle_idle)
+            data['start_date'] = None
+            data['end_date'] = None
+            data['cargo_name'] = None
+            data['cargo_quantity_loaded'] = None
 
         data['charter_party_id'] = self.charter_party_id
 
