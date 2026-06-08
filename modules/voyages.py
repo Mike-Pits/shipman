@@ -296,6 +296,13 @@ class VoyageDialog:
             data['cargo_quantity_loaded'] = None
 
         data['charter_party_id'] = self.charter_party_id
+        # Set vessel_id from charter party
+        if self.charter_party_id:
+            charter = db.fetch_one("SELECT vessel_id FROM charter_parties WHERE id = ?", (self.charter_party_id,))
+            if charter:
+                data['vessel_id'] = charter['vessel_id']
+        else:
+            data['vessel_id'] = None
 
         if self.voyage_id:
             db.update('voyages', self.voyage_id, data)

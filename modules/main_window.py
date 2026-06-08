@@ -2,6 +2,9 @@ import tkinter as tk
 from tkinter import ttk, messagebox
 from modules.vessels import VesselManager
 from modules.daily_reports import DailyReportManager
+from modules.charter_parties import CharterPartyManager
+from modules.voyages import VoyageManager
+from modules.payments import PaymentManager 
 from utils.language_manager import lang
 from database.db_manager import db
 
@@ -109,16 +112,16 @@ class MainWindow:
         dialog.geometry("400x250")
         dialog.transient(self.root)
         dialog.grab_set()
-        
+
         tk.Label(dialog, text="Current USD to RUB rate:", font=('Arial', 10)).pack(pady=10)
         current_rate_label = tk.Label(dialog, text=f"{self.current_rate:.2f}", font=('Arial', 12, 'bold'))
         current_rate_label.pack(pady=5)
-        
+
         tk.Label(dialog, text="New rate (RUB per 1 USD):").pack(pady=10)
         rate_entry = tk.Entry(dialog, width=15)
         rate_entry.pack(pady=5)
-        rate_entry.focus()  # Set focus to the entry field
-        
+        rate_entry.focus()
+
         def save_rate():
             try:
                 new_rate = float(rate_entry.get())
@@ -126,7 +129,6 @@ class MainWindow:
                     raise ValueError
                 from datetime import date
                 today = date.today().isoformat()
-                # Using db.execute_query which handles connection
                 db.execute_query("""
                     INSERT OR REPLACE INTO exchange_rates (rate_date, usd_to_rub_rate, source, notes, created_by)
                     VALUES (?, ?, ?, ?, ?)
@@ -137,23 +139,21 @@ class MainWindow:
                 messagebox.showinfo("Success", f"Exchange rate updated to {new_rate:.2f} RUB/USD")
             except ValueError:
                 messagebox.showerror("Error", "Please enter a valid positive number")
-        
-        # Bind Enter key to save_rate function
+
         rate_entry.bind('<Return>', lambda event: save_rate())
-        
         tk.Button(dialog, text="Save", command=save_rate, bg='#0078d4', fg='white').pack(pady=10)
-    
+ 
     def setup_tabs(self):
         """Create tabbed interface"""
         self.notebook = ttk.Notebook(self.root)
         self.notebook.pack(fill='both', expand=True, padx=5, pady=5)
-        
+
         # Tab 1: Dashboard (placeholder)
         dashboard_frame = ttk.Frame(self.notebook)
         self.notebook.add(dashboard_frame, text="Dashboard")
         tk.Label(dashboard_frame, text="ShipMan Dashboard\n\nWelcome!", 
-                 font=('Arial', 14)).pack(expand=True)
-        
+                font=('Arial', 14)).pack(expand=True)
+
         # Tab 2: Vessels
         try:
             self.vessel_manager = VesselManager(self.notebook, self.current_user)
@@ -163,7 +163,7 @@ class MainWindow:
             error_frame = ttk.Frame(self.notebook)
             self.notebook.add(error_frame, text="Vessels")
             tk.Label(error_frame, text=f"Error loading vessels: {e}", fg='red').pack(expand=True)
-        
+
         # Tab 3: Daily Reports
         try:
             self.daily_reports = DailyReportManager(self.notebook, self.current_user)
@@ -173,7 +173,7 @@ class MainWindow:
             error_frame = ttk.Frame(self.notebook)
             self.notebook.add(error_frame, text="Daily Reports")
             tk.Label(error_frame, text=f"Error loading daily reports: {e}", fg='red').pack(expand=True)
-        
+
         # Tab 4: Charter Parties
         try:
             from modules.charter_parties import CharterPartyManager
@@ -196,17 +196,22 @@ class MainWindow:
             self.notebook.add(error_frame, text="Voyages")
             tk.Label(error_frame, text=f"Error loading voyages: {e}", fg='red').pack(expand=True)
 
-        # Tab 6: Payments (placeholder)
-        payments_frame = ttk.Frame(self.notebook)
-        self.notebook.add(payments_frame, text=lang.get('payments_title'))
-        tk.Label(payments_frame, text="Payments Module - Coming Soon", 
-                 font=('Arial', 14)).pack(expand=True)
-        
+        # Tab 6: Payments (NEW - replacing placeholder)
+        try:
+            from modules.payments import PaymentManager
+            self.payment_manager = PaymentManager(self.notebook, self.current_user)
+            self.notebook.add(self.payment_manager.frame, text=lang.get('payments_title'))
+        except Exception as e:
+            print(f"Error loading payments module: {e}")
+            error_frame = ttk.Frame(self.notebook)
+            self.notebook.add(error_frame, text="Payments")
+            tk.Label(error_frame, text=f"Error loading payments: {e}", fg='red').pack(expand=True)
+
         # Tab 7: Reports (placeholder)
         reports_frame = ttk.Frame(self.notebook)
         self.notebook.add(reports_frame, text=lang.get('reports_title'))
         tk.Label(reports_frame, text="Reports Module - Coming Soon", 
-                 font=('Arial', 14)).pack(expand=True)
+                font=('Arial', 14)).pack(expand=True)
     
     def change_language(self, event=None):
         """Switch application language"""
