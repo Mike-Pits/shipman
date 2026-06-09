@@ -207,7 +207,18 @@ class MainWindow:
             self.notebook.add(error_frame, text="Payments")
             tk.Label(error_frame, text=f"Error loading payments: {e}", fg='red').pack(expand=True)
 
-        # Tab 7: Reports (placeholder)
+        # Tab 7: Bunker Replenishment
+        try:
+            from modules.bunker import BunkerManager
+            self.bunker_manager = BunkerManager(self.notebook, self.current_user)
+            self.notebook.add(self.bunker_manager.frame, text="Bunkering")
+        except Exception as e:
+            print(f"Error loading bunker module: {e}")
+            error_frame = ttk.Frame(self.notebook)
+            self.notebook.add(error_frame, text="Bunkering")
+            tk.Label(error_frame, text=f"Error loading bunker: {e}", fg='red').pack(expand=True)
+            
+        # Tab 8: Reports (placeholder)
         reports_frame = ttk.Frame(self.notebook)
         self.notebook.add(reports_frame, text=lang.get('reports_title'))
         tk.Label(reports_frame, text="Reports Module - Coming Soon", 
