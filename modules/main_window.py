@@ -219,11 +219,21 @@ class MainWindow:
             tk.Label(error_frame, text=f"Error loading bunker: {e}", fg='red').pack(expand=True)
             
         # Tab 8: Reports (placeholder)
-        reports_frame = ttk.Frame(self.notebook)
-        self.notebook.add(reports_frame, text=lang.get('reports_title'))
-        tk.Label(reports_frame, text="Reports Module - Coming Soon", 
-                font=('Arial', 14)).pack(expand=True)
-    
+        # reports_frame = ttk.Frame(self.notebook)
+        # self.notebook.add(reports_frame, text=lang.get('reports_title'))
+        # tk.Label(reports_frame, text="Reports Module - Coming Soon", 
+        #         font=('Arial', 14)).pack(expand=True)
+        # Tab: Reports
+        try:
+            from modules.reports import ReportsManager
+            self.reports_manager = ReportsManager(self.notebook, self.current_user)
+            self.notebook.add(self.reports_manager.frame, text=lang.get('reports_title'))
+        except Exception as e:
+            print(f"Error loading reports module: {e}")
+            error_frame = ttk.Frame(self.notebook)
+            self.notebook.add(error_frame, text="Reports")
+            tk.Label(error_frame, text=f"Error loading reports: {e}", fg='red').pack(expand=True)
+            
     def change_language(self, event=None):
         """Switch application language"""
         new_lang = 'en' if self.lang_var.get() == 'EN' else 'ru'
