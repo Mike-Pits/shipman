@@ -24,7 +24,6 @@ class BunkerManager:
         ttk.Button(toolbar, text="Export to Excel", command=self.export_to_excel).pack(side='left', padx=2)
         ttk.Button(toolbar, text="Refresh", command=self.load_bunkers).pack(side='left', padx=2)
 
-        # Filter frame
         filter_frame = ttk.LabelFrame(self.frame, text="Filters", padding=5)
         filter_frame.pack(fill='x', padx=10, pady=5)
 
@@ -33,21 +32,20 @@ class BunkerManager:
         self.vessel_filter.grid(row=0, column=1, padx=5, pady=2)
         self.vessel_filter.bind('<<ComboboxSelected>>', lambda e: self.load_bunkers())
 
-        # Load vessels for filter
         vessels = db.fetch_all("SELECT id, name FROM vessels WHERE is_active = 1 ORDER BY name")
         vessel_list = [f"{v['id']} - {v['name']}" for v in vessels]
         self.vessel_filter['values'] = [''] + vessel_list
         self.vessel_map = {f"{v['id']} - {v['name']}": v['id'] for v in vessels}
         self.vessel_filter.set('')
 
-        # Treeview
-        columns = ('id', 'date', 'vessel', 'port', 'grade', 'ifo', 'mgo', 'supplier', 'invoice')
+        columns = ('id', 'date', 'vessel', 'port', 'grade', 'ifo', 'mgo', 'ifo_price', 'mgo_price', 'total_cost', 'supplier')
         self.tree = ttk.Treeview(self.frame, columns=columns, show='headings', height=20)
         for col in columns:
             self.tree.heading(col, text=col.replace('_', ' ').title())
             self.tree.column(col, width=100)
         self.tree.column('port', width=120)
         self.tree.column('supplier', width=150)
+        self.tree.column('total_cost', width=120)
         scrollbar = ttk.Scrollbar(self.frame, orient='vertical', command=self.tree.yview)
         self.tree.configure(yscrollcommand=scrollbar.set)
         self.tree.pack(side='left', fill='both', expand=True, padx=5, pady=5)
@@ -60,7 +58,9 @@ class BunkerManager:
 
         query = """
             SELECT b.id, b.replenishment_datetime, v.name, b.port_name, b.fuel_grade,
-                   b.ifo_amount_mt, b.mgo_amount_mt, b.supplier, b.invoice_number
+                   b.ifo_amount_mt, b.mgo_amount_mt,
+                   b.ifo_price_per_mt, b.mgo_price_per_mt,
+                   b.cost_original, b.supplier
             FROM bunker_replenishments b
             JOIN vessels v ON b.vessel_id = v.id
             WHERE 1=1
@@ -75,6 +75,7 @@ class BunkerManager:
         rows = db.fetch_all(query, params)
 
         for r in rows:
+            total_cost = r['cost_original'] or 0
             self.tree.insert('', 'end', iid=str(r['id']), values=(
                 r['id'],
                 r['replenishment_datetime'][:16] if r['replenishment_datetime'] else '',
@@ -83,8 +84,10 @@ class BunkerManager:
                 r['fuel_grade'],
                 r['ifo_amount_mt'] or '',
                 r['mgo_amount_mt'] or '',
-                r['supplier'] or '',
-                r['invoice_number'] or ''
+                r['ifo_price_per_mt'] or '',
+                r['mgo_price_per_mt'] or '',
+                f"{total_cost:.2f}",
+                r['supplier'] or ''
             ))
 
     def add_bunker(self):
@@ -128,7 +131,7 @@ class BunkerDialog:
 
         self.dialog = tk.Toplevel(parent)
         self.dialog.title("Bunker Replenishment" + (" - Edit" if bunker_id else " - Add"))
-        self.dialog.geometry("550x700")
+        self.dialog.geometry("600x780")
         self.dialog.transient(parent)
         self.dialog.grab_set()
 
@@ -170,18 +173,41 @@ class BunkerDialog:
         ttk.Radiobutton(grade_frame, text="IFO only", variable=self.grade_var, value="IFO").pack(side='left')
         ttk.Radiobutton(grade_frame, text="MGO only", variable=self.grade_var, value="MGO").pack(side='left', padx=10)
         ttk.Radiobutton(grade_frame, text="Both", variable=self.grade_var, value="both").pack(side='left')
+        self.grade_var.trace('w', self.update_total_cost)
         row += 1
 
         # IFO amount
         tk.Label(main_frame, text="IFO Amount (MT):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
         self.ifo_entry = tk.Entry(main_frame, width=30)
         self.ifo_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        self.ifo_entry.bind('<KeyRelease>', self.update_total_cost)
+        row += 1
+
+        # IFO Price per MT
+        tk.Label(main_frame, text="IFO Price (per MT, RUB):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
+        self.ifo_price_entry = tk.Entry(main_frame, width=30)
+        self.ifo_price_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        self.ifo_price_entry.bind('<KeyRelease>', self.update_total_cost)
         row += 1
 
         # MGO amount
         tk.Label(main_frame, text="MGO Amount (MT):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
         self.mgo_entry = tk.Entry(main_frame, width=30)
         self.mgo_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        self.mgo_entry.bind('<KeyRelease>', self.update_total_cost)
+        row += 1
+
+        # MGO Price per MT
+        tk.Label(main_frame, text="MGO Price (per MT, RUB):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
+        self.mgo_price_entry = tk.Entry(main_frame, width=30)
+        self.mgo_price_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
+        self.mgo_price_entry.bind('<KeyRelease>', self.update_total_cost)
+        row += 1
+
+        # Total Cost (read-only, auto-calculated)
+        tk.Label(main_frame, text="Total Cost (RUB):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
+        self.total_cost_entry = tk.Entry(main_frame, width=30, state='readonly')
+        self.total_cost_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
         row += 1
 
         # Supplier
@@ -200,12 +226,6 @@ class BunkerDialog:
         tk.Label(main_frame, text="Invoice #:").grid(row=row, column=0, sticky='e', padx=5, pady=5)
         self.invoice_entry = tk.Entry(main_frame, width=30)
         self.invoice_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
-        row += 1
-
-        # Cost (optional)
-        tk.Label(main_frame, text="Cost (optional, RUB):").grid(row=row, column=0, sticky='e', padx=5, pady=5)
-        self.cost_entry = tk.Entry(main_frame, width=30)
-        self.cost_entry.grid(row=row, column=1, sticky='w', padx=5, pady=5)
         row += 1
 
         # Payment Terms
@@ -232,6 +252,31 @@ class BunkerDialog:
         self.vessel_combo['values'] = vessel_list
         self.vessel_map = {f"{v['id']} - {v['name']}": v['id'] for v in vessels}
 
+    def update_total_cost(self, *args):
+        """Calculate total cost from quantities and prices."""
+        try:
+            ifo_qty = float(self.ifo_entry.get().strip()) if self.ifo_entry.get().strip() else 0
+        except ValueError:
+            ifo_qty = 0
+        try:
+            ifo_price = float(self.ifo_price_entry.get().strip()) if self.ifo_price_entry.get().strip() else 0
+        except ValueError:
+            ifo_price = 0
+        try:
+            mgo_qty = float(self.mgo_entry.get().strip()) if self.mgo_entry.get().strip() else 0
+        except ValueError:
+            mgo_qty = 0
+        try:
+            mgo_price = float(self.mgo_price_entry.get().strip()) if self.mgo_price_entry.get().strip() else 0
+        except ValueError:
+            mgo_price = 0
+
+        total = ifo_qty * ifo_price + mgo_qty * mgo_price
+        self.total_cost_entry.config(state='normal')
+        self.total_cost_entry.delete(0, tk.END)
+        self.total_cost_entry.insert(0, f"{total:.2f}" if total else "")
+        self.total_cost_entry.config(state='readonly')
+
     def load_data(self):
         bunker = db.fetch_one("SELECT * FROM bunker_replenishments WHERE id = ?", (self.bunker_id,))
         if not bunker:
@@ -240,20 +285,54 @@ class BunkerDialog:
         vessel = db.fetch_one("SELECT id, name FROM vessels WHERE id = ?", (bunker['vessel_id'],))
         if vessel:
             self.vessel_combo.set(f"{vessel['id']} - {vessel['name']}")
-        # Fields
-        self.datetime_entry.insert(0, bunker['replenishment_datetime'][:16] if bunker['replenishment_datetime'] else '')
-        self.port_entry.insert(0, bunker['port_name'] or '')
-        self.grade_var.set(bunker['fuel_grade'] or 'both')
-        self.ifo_entry.insert(0, str(bunker['ifo_amount_mt']) if bunker['ifo_amount_mt'] else '')
-        self.mgo_entry.insert(0, str(bunker['mgo_amount_mt']) if bunker['mgo_amount_mt'] else '')
-        self.supplier_entry.insert(0, bunker['supplier'] or '')
-        self.receipt_entry.insert(0, bunker['delivery_receipt_number'] or '')
-        self.invoice_entry.insert(0, bunker['invoice_number'] or '')
-        if bunker['cost_original']:
-            self.cost_entry.insert(0, str(bunker['cost_original']))
-        self.payment_text.insert('1.0', bunker['payment_terms'] or '')
-        self.notes_text.insert('1.0', bunker['notes'] or '')
 
+        # Clear and load date/time
+        self.datetime_entry.delete(0, tk.END)
+        if bunker['replenishment_datetime']:
+            # Store only first 16 characters (YYYY-MM-DD HH:MM)
+            dt_str = bunker['replenishment_datetime'][:16]
+            self.datetime_entry.insert(0, dt_str)
+
+        # Clear and load other fields
+        self.port_entry.delete(0, tk.END)
+        self.port_entry.insert(0, bunker['port_name'] or '')
+
+        self.grade_var.set(bunker['fuel_grade'] or 'both')
+
+        self.ifo_entry.delete(0, tk.END)
+        if bunker['ifo_amount_mt']:
+            self.ifo_entry.insert(0, str(bunker['ifo_amount_mt']))
+
+        self.mgo_entry.delete(0, tk.END)
+        if bunker['mgo_amount_mt']:
+            self.mgo_entry.insert(0, str(bunker['mgo_amount_mt']))
+
+        self.ifo_price_entry.delete(0, tk.END)
+        if bunker['ifo_price_per_mt']:
+            self.ifo_price_entry.insert(0, str(bunker['ifo_price_per_mt']))
+
+        self.mgo_price_entry.delete(0, tk.END)
+        if bunker['mgo_price_per_mt']:
+            self.mgo_price_entry.insert(0, str(bunker['mgo_price_per_mt']))
+
+        # Update total cost (this will also clear and recompute)
+        self.update_total_cost()
+
+        self.supplier_entry.delete(0, tk.END)
+        self.supplier_entry.insert(0, bunker['supplier'] or '')
+
+        self.receipt_entry.delete(0, tk.END)
+        self.receipt_entry.insert(0, bunker['delivery_receipt_number'] or '')
+
+        self.invoice_entry.delete(0, tk.END)
+        self.invoice_entry.insert(0, bunker['invoice_number'] or '')
+
+        self.payment_text.delete('1.0', tk.END)
+        self.payment_text.insert('1.0', bunker['payment_terms'] or '')
+
+        self.notes_text.delete('1.0', tk.END)
+        self.notes_text.insert('1.0', bunker['notes'] or '')
+        
     def save(self):
         vessel_sel = self.vessel_combo.get()
         if not vessel_sel or vessel_sel not in self.vessel_map:
@@ -266,7 +345,6 @@ class BunkerDialog:
             messagebox.showerror("Error", "Replenishment date/time is required")
             return
         try:
-            # Accept YYYY-MM-DD HH:MM format
             dt = datetime.strptime(datetime_str, '%Y-%m-%d %H:%M:%S')
         except:
             try:
@@ -289,8 +367,36 @@ class BunkerDialog:
             except:
                 pass
 
-        cost_str = self.cost_entry.get().strip()
-        cost = float(cost_str) if cost_str else None
+        # Prices
+        ifo_price = None
+        mgo_price = None
+        try:
+            ifo_price = float(self.ifo_price_entry.get().strip()) if self.ifo_price_entry.get().strip() else None
+        except:
+            pass
+        try:
+            mgo_price = float(self.mgo_price_entry.get().strip()) if self.mgo_price_entry.get().strip() else None
+        except:
+            pass
+
+        # Total cost (computed from prices & quantities; if user entered manual cost we could override)
+        total_cost = None
+        total_str = self.total_cost_entry.get().strip()
+        if total_str:
+            try:
+                total_cost = float(total_str)
+            except:
+                pass
+
+        # If total cost is empty, try to compute from ifo_price and mgo_price and quantities
+        if total_cost is None:
+            if ifo_amount and ifo_price:
+                total_cost = ifo_amount * ifo_price
+            if mgo_amount and mgo_price:
+                if total_cost is None:
+                    total_cost = mgo_amount * mgo_price
+                else:
+                    total_cost += mgo_amount * mgo_price
 
         data = {
             'vessel_id': vessel_id,
@@ -299,9 +405,11 @@ class BunkerDialog:
             'fuel_grade': fuel_grade,
             'ifo_amount_mt': ifo_amount,
             'mgo_amount_mt': mgo_amount,
-            'cost_original': cost,
-            'cost_currency': 'RUB',   # currently only RUB
-            'cost_rub': cost,
+            'ifo_price_per_mt': ifo_price,
+            'mgo_price_per_mt': mgo_price,
+            'cost_original': total_cost,
+            'cost_currency': 'RUB',
+            'cost_rub': total_cost,
             'supplier': self.supplier_entry.get().strip() or None,
             'delivery_receipt_number': self.receipt_entry.get().strip() or None,
             'invoice_number': self.invoice_entry.get().strip() or None,
@@ -316,14 +424,6 @@ class BunkerDialog:
         else:
             db.insert('bunker_replenishments', data)
             messagebox.showinfo("Success", "Bunker event added")
-
-        # After saving, trigger consumption recalculation for this vessel
-        from modules.daily_reports import DailyReportManager
-        # We need to call recalc_vessel_consumptions – but we cannot instantiate DailyReportManager here.
-        # Instead, we directly call the recalc function from db_manager (or reimplement a simple version).
-        # We'll implement a separate utility function in utils/consumption.py later.
-        # For now, just inform the user.
-        messagebox.showinfo("Note", "Please refresh Daily Reports tab to recalculate consumption.")
 
         self.dialog.destroy()
         if self.on_save:
