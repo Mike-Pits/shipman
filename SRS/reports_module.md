@@ -132,6 +132,8 @@ Building this flexible Reports tab is a significant undertaking. To make it mana
     4.  Write a `ReportEngine` class to manage database queries and data formatting.
     5.  Implement the three simple reports.
 
+
+
 ### Phase 2: Financial & Performance Reports (Full Features)
 
 *   **Goal:** Implement the more complex reports that require joining data from multiple tables and performing calculations.
@@ -143,6 +145,7 @@ Building this flexible Reports tab is a significant undertaking. To make it mana
     1.  Extend the `ReportEngine` with complex query builders.
     2.  Implement the P&L and TCE calculation logic.
     3.  Add currency toggle functionality.
+
 
 ### Phase 3: Advanced & Compliance Reports (Specialized)
 
