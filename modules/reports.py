@@ -15,27 +15,20 @@ class ReportEngine:
             'voyage_summary': 'Voyage Summary',
             'fuel_consumption': 'Fuel Consumption (Daily)',
             'fleet_distance_speed': 'Fleet Distance & Speed',
-            'voyage_pnl': 'Voyage P&L (Phase 2)',
-            'tce': 'TCE Report (Phase 2)',
+            'voyage_pnl': 'Voyage P&L',
+            'tce': 'TCE Report',
         }
     
     @staticmethod
     def get_parameters(report_type):
-        if report_type == 'voyage_summary':
+        if report_type in ('voyage_summary', 'voyage_pnl', 'tce'):
             return [
                 ('Vessel:', 'vessel_id', 'vessel'),
                 ('Voyage:', 'voyage_id', 'voyage'),
                 ('Date From:', 'date_from', 'date'),
                 ('Date To:', 'date_to', 'date'),
             ]
-        elif report_type == 'fuel_consumption':
-            return [
-                ('Vessel:', 'vessel_id', 'vessel'),
-                ('Voyage:', 'voyage_id', 'voyage'),   # Now includes voyage selection
-                ('Date From:', 'date_from', 'date'),
-                ('Date To:', 'date_to', 'date'),
-            ]
-        elif report_type == 'fleet_distance_speed':
+        elif report_type in ('fuel_consumption', 'fleet_distance_speed'):
             return [
                 ('Vessel:', 'vessel_id', 'vessel'),
                 ('Date From:', 'date_from', 'date'),
@@ -52,6 +45,10 @@ class ReportEngine:
             return ReportEngine._fuel_consumption(params)
         elif report_type == 'fleet_distance_speed':
             return ReportEngine._fleet_distance_speed(params)
+        elif report_type == 'voyage_pnl':
+            return ReportEngine._voyage_pnl(params)
+        elif report_type == 'tce':
+            return ReportEngine._tce(params)
         else:
             return None
     
@@ -132,7 +129,7 @@ class ReportEngine:
         return {'headers': headers, 'data': data, 'message': None}
     
     # ------------------------------------------------------------------
-    # Fuel Consumption Report (Daily) – includes per‑day data + totals
+    # Fuel Consumption Report (Daily)
     # ------------------------------------------------------------------
     @staticmethod
     def _fuel_consumption(params):
@@ -197,7 +194,6 @@ class ReportEngine:
             total_ifo_cons += ifo_cons
             total_mgo_cons += mgo_cons
         
-        # Append totals row (if there is more than one row)
         if len(data) > 1:
             data.append([
                 'TOTAL', '', total_distance, '', '', '', total_ifo_cons, total_mgo_cons
@@ -252,9 +248,140 @@ class ReportEngine:
                 r['min_speed'] or 0,
             ])
         return {'headers': headers, 'data': data, 'message': None}
+    
+    # ------------------------------------------------------------------
+    # Voyage P&L Report
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _voyage_pnl(params):
+        vessel_id = params.get('vessel_id')
+        voyage_id = params.get('voyage_id')
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+        
+        query = """
+            SELECT 
+                v.id AS voyage_id,
+                v.voyage_number,
+                ves.name AS vessel_name,
+                v.start_date,
+                v.end_date,
+                COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) AS total_income,
+                COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0) AS total_expenses,
+                (COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) -
+                 COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0)) AS net_result
+            FROM voyages v
+            JOIN vessels ves ON v.vessel_id = ves.id
+            LEFT JOIN payments p ON p.voyage_id = v.id
+            WHERE 1=1
+        """
+        params_list = []
+        if vessel_id:
+            query += " AND v.vessel_id = ?"
+            params_list.append(vessel_id)
+        if voyage_id:
+            query += " AND v.id = ?"
+            params_list.append(voyage_id)
+        if date_from:
+            query += " AND v.start_date >= ?"
+            params_list.append(date_from)
+        if date_to:
+            query += " AND v.end_date <= ?"
+            params_list.append(date_to)
+        
+        query += """
+            GROUP BY v.id
+            ORDER BY v.start_date DESC
+        """
+        rows = db.fetch_all(query, params_list)
+        if not rows:
+            return {'headers': [], 'data': [], 'message': 'No voyages found matching the criteria.'}
+        
+        headers = ['Voyage #', 'Vessel', 'Start Date', 'End Date', 
+                   'Total Income (RUB)', 'Total Expenses (RUB)', 'Net Result (RUB)']
+        data = []
+        for r in rows:
+            data.append([
+                r['voyage_number'] or '',
+                r['vessel_name'],
+                r['start_date'] or '',
+                r['end_date'] or '',
+                r['total_income'],
+                r['total_expenses'],
+                r['net_result'],
+            ])
+        return {'headers': headers, 'data': data, 'message': None}
+    
+    # ------------------------------------------------------------------
+    # TCE Report
+    # ------------------------------------------------------------------
+    @staticmethod
+    def _tce(params):
+        vessel_id = params.get('vessel_id')
+        voyage_id = params.get('voyage_id')
+        date_from = params.get('date_from')
+        date_to = params.get('date_to')
+        
+        query = """
+            SELECT 
+                v.id AS voyage_id,
+                v.voyage_number,
+                ves.name AS vessel_name,
+                v.start_date,
+                v.end_date,
+                julianday(v.end_date) - julianday(v.start_date) AS duration_days,
+                COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) AS total_income,
+                COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0) AS total_expenses,
+                (COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) -
+                 COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0)) AS net_result
+            FROM voyages v
+            JOIN vessels ves ON v.vessel_id = ves.id
+            LEFT JOIN payments p ON p.voyage_id = v.id
+            WHERE 1=1
+        """
+        params_list = []
+        if vessel_id:
+            query += " AND v.vessel_id = ?"
+            params_list.append(vessel_id)
+        if voyage_id:
+            query += " AND v.id = ?"
+            params_list.append(voyage_id)
+        if date_from:
+            query += " AND v.start_date >= ?"
+            params_list.append(date_from)
+        if date_to:
+            query += " AND v.end_date <= ?"
+            params_list.append(date_to)
+        
+        query += """
+            GROUP BY v.id
+            ORDER BY v.start_date DESC
+        """
+        rows = db.fetch_all(query, params_list)
+        if not rows:
+            return {'headers': [], 'data': [], 'message': 'No voyages found matching the criteria.'}
+        
+        headers = ['Voyage #', 'Vessel', 'Start Date', 'End Date', 'Duration (days)', 
+                   'Total Income (RUB)', 'Total Expenses (RUB)', 'Net Result (RUB)', 'TCE (RUB/day)']
+        data = []
+        for r in rows:
+            duration = r['duration_days'] or 0
+            tce = r['net_result'] / duration if duration > 0 else None
+            data.append([
+                r['voyage_number'] or '',
+                r['vessel_name'],
+                r['start_date'] or '',
+                r['end_date'] or '',
+                duration,
+                r['total_income'],
+                r['total_expenses'],
+                r['net_result'],
+                round(tce, 2) if tce is not None else 'N/A',
+            ])
+        return {'headers': headers, 'data': data, 'message': None}
 
 # -------------------------------------------------------------------
-# ReportsManager UI – unchanged, but fully provided for completeness
+# ReportsManager UI (unchanged)
 # -------------------------------------------------------------------
 class ReportsManager:
     def __init__(self, parent, current_user):
