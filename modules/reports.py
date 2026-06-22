@@ -53,7 +53,7 @@ class ReportEngine:
             return None
     
     # ------------------------------------------------------------------
-    # Voyage Summary Report
+    # Voyage Summary Report (with SQL duration)
     # ------------------------------------------------------------------
     @staticmethod
     def _voyage_summary(params):
@@ -77,7 +77,8 @@ class ReportEngine:
                 SUM(dr.distance_run_nm) AS total_distance,
                 ROUND(AVG(dr.avg_speed_knots), 2) AS avg_speed,
                 SUM(dr.consumption_ifo_24h_mt) AS total_ifo,
-                SUM(dr.consumption_mgo_24h_mt) AS total_mgo
+                SUM(dr.consumption_mgo_24h_mt) AS total_mgo,
+                julianday(v.end_date) - julianday(v.start_date) AS duration_days
             FROM voyages v
             JOIN vessels ves ON v.vessel_id = ves.id
             LEFT JOIN daily_reports dr ON dr.voyage_id = v.id
@@ -110,7 +111,9 @@ class ReportEngine:
                    'Total IFO (MT)', 'Total MGO (MT)']
         data = []
         for r in rows:
-            days = (datetime.strptime(r['end_date'], '%Y-%m-%d') - datetime.strptime(r['start_date'], '%Y-%m-%d')).days if r['start_date'] and r['end_date'] else None
+            days = r['duration_days']
+            if days is not None:
+                days = round(days, 2)
             data.append([
                 r['voyage_number'] or '',
                 r['vessel_name'],
@@ -120,7 +123,7 @@ class ReportEngine:
                 r['end_date'] or '',
                 r['cargo_name'] or '',
                 r['cargo_quantity_loaded'] or 0,
-                days or '',
+                days if days is not None else '',
                 r['total_distance'] or 0,
                 r['avg_speed'] or 0,
                 r['total_ifo'] or 0,
@@ -250,7 +253,7 @@ class ReportEngine:
         return {'headers': headers, 'data': data, 'message': None}
     
     # ------------------------------------------------------------------
-    # Voyage P&L Report
+    # Voyage P&L Report (with fallback for unlinked payments)
     # ------------------------------------------------------------------
     @staticmethod
     def _voyage_pnl(params):
@@ -258,7 +261,7 @@ class ReportEngine:
         voyage_id = params.get('voyage_id')
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        
+
         query = """
             SELECT 
                 v.id AS voyage_id,
@@ -266,13 +269,34 @@ class ReportEngine:
                 ves.name AS vessel_name,
                 v.start_date,
                 v.end_date,
-                COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) AS total_income,
-                COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0) AS total_expenses,
-                (COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) -
-                 COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0)) AS net_result
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.voyage_id = v.id AND p.transaction_type = 'income'), 0
+                ) AS direct_income,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.voyage_id = v.id AND p.transaction_type = 'expense'), 0
+                ) AS direct_expenses,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.vessel_id = v.vessel_id 
+                     AND p.voyage_id IS NULL 
+                     AND (p.invoice_date BETWEEN v.start_date AND v.end_date
+                          OR (p.invoice_date IS NULL AND p.payment_date BETWEEN v.start_date AND v.end_date)
+                          OR (p.invoice_date IS NULL AND p.payment_date IS NULL AND p.created_at BETWEEN v.start_date AND v.end_date))
+                     AND p.transaction_type = 'income'), 0
+                ) AS fallback_income,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.vessel_id = v.vessel_id 
+                     AND p.voyage_id IS NULL 
+                     AND (p.invoice_date BETWEEN v.start_date AND v.end_date
+                          OR (p.invoice_date IS NULL AND p.payment_date BETWEEN v.start_date AND v.end_date)
+                          OR (p.invoice_date IS NULL AND p.payment_date IS NULL AND p.created_at BETWEEN v.start_date AND v.end_date))
+                     AND p.transaction_type = 'expense'), 0
+                ) AS fallback_expenses
             FROM voyages v
             JOIN vessels ves ON v.vessel_id = ves.id
-            LEFT JOIN payments p ON p.voyage_id = v.id
             WHERE 1=1
         """
         params_list = []
@@ -288,32 +312,32 @@ class ReportEngine:
         if date_to:
             query += " AND v.end_date <= ?"
             params_list.append(date_to)
-        
-        query += """
-            GROUP BY v.id
-            ORDER BY v.start_date DESC
-        """
+
+        query += " ORDER BY v.start_date DESC"
         rows = db.fetch_all(query, params_list)
         if not rows:
             return {'headers': [], 'data': [], 'message': 'No voyages found matching the criteria.'}
-        
+
         headers = ['Voyage #', 'Vessel', 'Start Date', 'End Date', 
                    'Total Income (RUB)', 'Total Expenses (RUB)', 'Net Result (RUB)']
         data = []
         for r in rows:
+            total_income = r['direct_income'] + r['fallback_income']
+            total_expenses = r['direct_expenses'] + r['fallback_expenses']
+            net_result = total_income - total_expenses
             data.append([
                 r['voyage_number'] or '',
                 r['vessel_name'],
                 r['start_date'] or '',
                 r['end_date'] or '',
-                r['total_income'],
-                r['total_expenses'],
-                r['net_result'],
+                total_income,
+                total_expenses,
+                net_result,
             ])
         return {'headers': headers, 'data': data, 'message': None}
     
     # ------------------------------------------------------------------
-    # TCE Report
+    # TCE Report (with fallback and fractional days)
     # ------------------------------------------------------------------
     @staticmethod
     def _tce(params):
@@ -321,7 +345,7 @@ class ReportEngine:
         voyage_id = params.get('voyage_id')
         date_from = params.get('date_from')
         date_to = params.get('date_to')
-        
+
         query = """
             SELECT 
                 v.id AS voyage_id,
@@ -330,13 +354,34 @@ class ReportEngine:
                 v.start_date,
                 v.end_date,
                 julianday(v.end_date) - julianday(v.start_date) AS duration_days,
-                COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) AS total_income,
-                COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0) AS total_expenses,
-                (COALESCE(SUM(CASE WHEN p.transaction_type = 'income' THEN p.rub_amount ELSE 0 END), 0) -
-                 COALESCE(SUM(CASE WHEN p.transaction_type = 'expense' THEN p.rub_amount ELSE 0 END), 0)) AS net_result
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.voyage_id = v.id AND p.transaction_type = 'income'), 0
+                ) AS direct_income,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.voyage_id = v.id AND p.transaction_type = 'expense'), 0
+                ) AS direct_expenses,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.vessel_id = v.vessel_id 
+                     AND p.voyage_id IS NULL 
+                     AND (p.invoice_date BETWEEN v.start_date AND v.end_date
+                          OR (p.invoice_date IS NULL AND p.payment_date BETWEEN v.start_date AND v.end_date)
+                          OR (p.invoice_date IS NULL AND p.payment_date IS NULL AND p.created_at BETWEEN v.start_date AND v.end_date))
+                     AND p.transaction_type = 'income'), 0
+                ) AS fallback_income,
+                COALESCE(
+                    (SELECT SUM(p.rub_amount) FROM payments p 
+                     WHERE p.vessel_id = v.vessel_id 
+                     AND p.voyage_id IS NULL 
+                     AND (p.invoice_date BETWEEN v.start_date AND v.end_date
+                          OR (p.invoice_date IS NULL AND p.payment_date BETWEEN v.start_date AND v.end_date)
+                          OR (p.invoice_date IS NULL AND p.payment_date IS NULL AND p.created_at BETWEEN v.start_date AND v.end_date))
+                     AND p.transaction_type = 'expense'), 0
+                ) AS fallback_expenses
             FROM voyages v
             JOIN vessels ves ON v.vessel_id = ves.id
-            LEFT JOIN payments p ON p.voyage_id = v.id
             WHERE 1=1
         """
         params_list = []
@@ -352,30 +397,30 @@ class ReportEngine:
         if date_to:
             query += " AND v.end_date <= ?"
             params_list.append(date_to)
-        
-        query += """
-            GROUP BY v.id
-            ORDER BY v.start_date DESC
-        """
+
+        query += " ORDER BY v.start_date DESC"
         rows = db.fetch_all(query, params_list)
         if not rows:
             return {'headers': [], 'data': [], 'message': 'No voyages found matching the criteria.'}
-        
+
         headers = ['Voyage #', 'Vessel', 'Start Date', 'End Date', 'Duration (days)', 
                    'Total Income (RUB)', 'Total Expenses (RUB)', 'Net Result (RUB)', 'TCE (RUB/day)']
         data = []
         for r in rows:
+            total_income = r['direct_income'] + r['fallback_income']
+            total_expenses = r['direct_expenses'] + r['fallback_expenses']
+            net_result = total_income - total_expenses
             duration = r['duration_days'] or 0
-            tce = r['net_result'] / duration if duration > 0 else None
+            tce = net_result / duration if duration > 0 else None
             data.append([
                 r['voyage_number'] or '',
                 r['vessel_name'],
                 r['start_date'] or '',
                 r['end_date'] or '',
-                duration,
-                r['total_income'],
-                r['total_expenses'],
-                r['net_result'],
+                round(duration, 2),
+                total_income,
+                total_expenses,
+                net_result,
                 round(tce, 2) if tce is not None else 'N/A',
             ])
         return {'headers': headers, 'data': data, 'message': None}
