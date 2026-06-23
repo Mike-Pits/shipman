@@ -387,7 +387,7 @@ class PaymentDialog:
             try:
                 rub_amount = float(amount_str)
             except ValueError:
-                messagebox.showerror("Error", "Amount must be a number")
+                messagebox.showerror("Error", "Amount must be number")
                 return
 
             vessel_id = self.vessel_map.get(self.vessel_combo.get())
@@ -403,6 +403,7 @@ class PaymentDialog:
                 'charter_party_id': charter_id,
                 'vendor_id': vendor_id,
                 'cost_type_id': cost_type_id,
+                'transaction_type': ttype,   # THIS LINE IS CRITICAL
                 'original_currency': 'RUB',
                 'original_amount': rub_amount,
                 'rub_amount': rub_amount,
