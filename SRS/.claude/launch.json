@@ -1,0 +1,14 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "shipman-backend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /home/mike-pi/Documents/coding/projects/shipman/backend && source venv/bin/activate && exec uvicorn app.main:app --port 8010"
+      ],
+      "port": 8010
+    }
+  ]
+}
