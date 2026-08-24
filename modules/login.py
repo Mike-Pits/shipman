@@ -10,27 +10,48 @@ class LoginWindow:
     def __init__(self, parent, on_login_success):
         self.parent = parent
         self.on_login_success = on_login_success
-        
+
         self.window = tk.Toplevel(parent)
         self.window.title(lang.get('login_title'))
         self.window.geometry("400x300")
         self.window.resizable(False, False)
         self.window.transient(parent)
+
+        # --- FORCE FOCUS AND GRAB ---
+        self.window.focus_force()
         self.window.grab_set()
-        
-        # FORCE WINDOW VISIBILITY - Critical fixes
-        self.window.deiconify()  # Ensure window is shown
-        self.window.lift()       # Bring to front
-        self.window.focus_force() # Force focus
-        self.window.attributes('-topmost', True)  # Make topmost temporarily
-        self.window.after(100, lambda: self.window.attributes('-topmost', False))  # Remove after 100ms
-        
+        self.window.lift()
+        self.window.attributes('-topmost', True)
+        self.window.after(100, lambda: self.window.attributes('-topmost', False))
+
         self.setup_ui()
         self.window.bind('<Return>', lambda e: self.login())
+        self.username_entry.focus()
+
+    # def __init__(self, parent, on_login_success):
+    #     self.parent = parent
+    #     self.on_login_success = on_login_success
         
-        # Ensure window is visible after setup
-        self.window.update_idletasks()
-        self.window.update()
+    #     self.window = tk.Toplevel(parent)
+    #     self.window.title(lang.get('login_title'))
+    #     self.window.geometry("400x300")
+    #     self.window.resizable(False, False)
+    #     self.window.transient(parent)
+    #     self.window.grab_set()
+        
+    #     # FORCE WINDOW VISIBILITY - Critical fixes
+    #     self.window.deiconify()  # Ensure window is shown
+    #     self.window.lift()       # Bring to front
+    #     self.window.focus_force() # Force focus
+    #     self.window.attributes('-topmost', True)  # Make topmost temporarily
+    #     self.window.after(100, lambda: self.window.attributes('-topmost', False))  # Remove after 100ms
+        
+    #     self.setup_ui()
+    #     self.window.bind('<Return>', lambda e: self.login())
+        
+    #     # Ensure window is visible after setup
+    #     self.window.update_idletasks()
+    #     self.window.update()
     
     def setup_ui(self):
         # Language selector at top right
