@@ -14,3 +14,4 @@ class DailyReport(Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False)
     fields: Mapped[dict] = mapped_column(JSON, nullable=False, default=dict)
     approved: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    source_message_id: Mapped[str | None] = mapped_column(String, nullable=True, unique=True)

@@ -19,3 +19,4 @@ class VoyageRead(VoyageCreate):
     model_config = ConfigDict(from_attributes=True)
 
     id: int
+    warnings: list[str] = []

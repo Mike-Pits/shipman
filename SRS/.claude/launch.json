@@ -9,6 +9,15 @@
         "cd /home/mike-pi/Documents/coding/projects/shipman/backend && source venv/bin/activate && exec uvicorn app.main:app --port 8010"
       ],
       "port": 8010
+    },
+    {
+      "name": "shipman-frontend",
+      "runtimeExecutable": "bash",
+      "runtimeArgs": [
+        "-c",
+        "cd /home/mike-pi/Documents/coding/projects/shipman/frontend && exec npm run dev -- --port 5180"
+      ],
+      "port": 5180
     }
   ]
 }

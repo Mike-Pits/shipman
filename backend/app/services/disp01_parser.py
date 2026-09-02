@@ -27,6 +27,24 @@ def parse_report_datetime(value: str, today: date | None = None) -> datetime:
     return candidate
 
 
+def parse_rob(raw_value: str | None) -> tuple[float | None, float | None]:
+    """Parse a DISP-01 code-31 value ("IFO/MGO", comma decimals) into (ifo_mt, mgo_mt).
+
+    Returns (None, None) if the value is missing or not in the expected shape.
+    """
+    if not raw_value:
+        return None, None
+    parts = raw_value.split("/")
+    if len(parts) != 2:
+        return None, None
+    try:
+        ifo = float(parts[0].strip().replace(",", "."))
+        mgo = float(parts[1].strip().replace(",", "."))
+    except ValueError:
+        return None, None
+    return ifo, mgo
+
+
 def parse_disp01(raw_text: str) -> dict:
     """Parse a raw DISP-01 message into its coded fields.
 

@@ -3,7 +3,14 @@ from sqlalchemy.orm import Session
 
 from app.database import get_db
 from app.models.vessel import FuelConsumptionProfile, Vessel
+from app.models.vetting_inspection import VettingInspection
 from app.schemas.vessel import VesselCreate, VesselRead
+from app.schemas.vetting_inspection import (
+    VettingInspectionCreate,
+    VettingInspectionRead,
+    VettingStatusRead,
+)
+from app.services.vetting import current_vetting_status
 
 router = APIRouter(prefix="/vessels", tags=["vessels"])
 
@@ -51,3 +58,42 @@ def update_vessel(vessel_id: int, payload: VesselCreate, db: Session = Depends(g
     db.commit()
     db.refresh(vessel)
     return vessel
+
+
+@router.post(
+    "/{vessel_id}/vetting-inspections", response_model=VettingInspectionRead, status_code=201
+)
+def create_vetting_inspection(
+    vessel_id: int, payload: VettingInspectionCreate, db: Session = Depends(get_db)
+):
+    if db.get(Vessel, vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    inspection = VettingInspection(vessel_id=vessel_id, **payload.model_dump())
+    db.add(inspection)
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
+
+@router.get("/{vessel_id}/vetting-inspections", response_model=list[VettingInspectionRead])
+def list_vetting_inspections(vessel_id: int, db: Session = Depends(get_db)):
+    return (
+        db.query(VettingInspection).filter(VettingInspection.vessel_id == vessel_id).all()
+    )
+
+
+@router.get("/{vessel_id}/vetting-status", response_model=VettingStatusRead)
+def get_vetting_status(vessel_id: int, db: Session = Depends(get_db)):
+    if db.get(Vessel, vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    result = current_vetting_status(db, vessel_id)
+    if result is None:
+        return VettingStatusRead(status=None)
+    inspection, effective_status = result
+    return VettingStatusRead(
+        status=effective_status,
+        inspecting_body=inspection.inspecting_body,
+        expiry_date=inspection.expiry_date,
+    )

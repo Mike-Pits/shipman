@@ -8,6 +8,7 @@ from app.dependencies import get_rate_fetcher
 from app.models.exchange_rate import ExchangeRate
 from app.schemas.exchange_rate import ExchangeRateOverride, ExchangeRateRead
 from app.services.cbr_rate_fetcher import RateFetchError
+from app.services.audit import write_audit_entry
 
 router = APIRouter(prefix="/exchange-rates", tags=["exchange-rates"])
 
@@ -60,13 +61,24 @@ def override_rate_for_date(
 ):
     rate = db.query(ExchangeRate).filter(ExchangeRate.rate_date == rate_date).first()
     if rate is not None:
+        old_rate = rate.usd_rub_rate
         rate.usd_rub_rate = payload.usd_rub_rate
         rate.manual_override = True
+        db.flush()
+        write_audit_entry(
+            db, "exchange_rates", rate.id, "update",
+            {"usd_rub_rate": old_rate}, {"usd_rub_rate": rate.usd_rub_rate},
+        )
     else:
         rate = ExchangeRate(
             rate_date=rate_date, usd_rub_rate=payload.usd_rub_rate, manual_override=True
         )
         db.add(rate)
+        db.flush()
+        write_audit_entry(
+            db, "exchange_rates", rate.id, "insert",
+            None, {"rate_date": rate_date, "usd_rub_rate": rate.usd_rub_rate},
+        )
     db.commit()
     db.refresh(rate)
     return rate

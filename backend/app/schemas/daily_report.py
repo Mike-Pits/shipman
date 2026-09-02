@@ -22,3 +22,5 @@ class DailyReportRead(BaseModel):
     raw_text: str
     fields: dict[str, str]
     approved: bool
+    warnings: list[str] = []
+    source_message_id: str | None = None
