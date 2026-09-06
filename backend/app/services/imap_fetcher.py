@@ -1,12 +1,29 @@
 import email
 import email.message
+import email.utils
 import imaplib
+from datetime import datetime
 
 from app import config
 
 
 class ImapFetchError(RuntimeError):
     pass
+
+
+def _extract_date(msg: email.message.Message) -> datetime | None:
+    """The email's own envelope date — the only reliable signal for which YEAR a
+    message belongs to, since the DISP-01 body itself only carries day/month (see
+    disp01_parser.parse_report_datetime). Returns None if the header is missing or
+    unparseable; callers then fall back to comparing against today, which is only
+    safe for near-real-time messages."""
+    date_header = msg.get("Date")
+    if not date_header:
+        return None
+    try:
+        return email.utils.parsedate_to_datetime(date_header)
+    except (TypeError, ValueError):
+        return None
 
 
 def _extract_body(msg: email.message.Message) -> str:
@@ -22,9 +39,12 @@ def _extract_body(msg: email.message.Message) -> str:
     return payload.decode(charset, errors="replace") if payload else ""
 
 
-def fetch_disp01_messages(folder: str) -> list[tuple[str, str]]:
-    """FR-16: retrieve every message currently in `folder` as (message_id, body_text)
-    pairs, without altering the mailbox in any way.
+def fetch_disp01_messages(folder: str) -> list[tuple[str, str, datetime | None]]:
+    """FR-16: retrieve every message currently in `folder` as
+    (message_id, body_text, email_date) triples, without altering the mailbox in
+    any way. email_date is the message's own Date header (None if missing/
+    unparseable) — used to resolve the report year for archived/historical
+    messages instead of assuming the message is from today.
 
     Uses BODY.PEEK[] (not BODY[]) so messages are never marked as read, and opens
     the mailbox with readonly=True so no STORE/EXPUNGE is even possible over this
@@ -64,14 +84,14 @@ def fetch_disp01_messages(folder: str) -> list[tuple[str, str]]:
             if status != "OK":
                 raise ImapFetchError("IMAP fetch failed")
 
-            messages: list[tuple[str, str]] = []
+            messages: list[tuple[str, str, datetime | None]] = []
             for i, part in enumerate(msg_data):
                 if not isinstance(part, tuple):
                     continue
                 raw_email = part[1]
                 msg = email.message_from_bytes(raw_email)
                 message_id = msg.get("Message-ID") or f"{folder}:seq-{i}"
-                messages.append((message_id, _extract_body(msg)))
+                messages.append((message_id, _extract_body(msg), _extract_date(msg)))
             return messages
         finally:
             connection.logout()

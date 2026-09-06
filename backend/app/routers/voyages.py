@@ -61,6 +61,23 @@ def get_voyage(voyage_id: int, db: Session = Depends(get_db)):
     return _to_read(voyage, db)
 
 
+@router.put("/{voyage_id}", response_model=VoyageRead)
+def update_voyage(voyage_id: int, payload: VoyageCreate, db: Session = Depends(get_db)):
+    voyage = db.get(Voyage, voyage_id)
+    if voyage is None:
+        raise HTTPException(status_code=404, detail="Voyage not found")
+    if db.get(Fixture, payload.fixture_id) is None:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+    if db.get(Vessel, payload.vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    for field, value in payload.model_dump().items():
+        setattr(voyage, field, value)
+    db.commit()
+    db.refresh(voyage)
+    return _to_read(voyage, db)
+
+
 def _daily_hire_rate(fixture: Fixture) -> float:
     return fixture.hire_rate if fixture.hire_rate_basis == "daily" else fixture.hire_rate / 30
 

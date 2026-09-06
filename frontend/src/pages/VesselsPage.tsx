@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
-import { createVessel, listVessels } from '../api/vessels'
+import { useTranslation } from 'react-i18next'
+import { createVessel, deleteVessel, listVessels, updateVessel } from '../api/vessels'
 import type { FuelConsumptionMode, Vessel, VesselCreate } from '../api/types'
 
 const EMPTY_FORM: VesselCreate = {
@@ -18,11 +19,11 @@ const EMPTY_FORM: VesselCreate = {
   fuel_consumption_profiles: [],
 }
 
-const FUEL_MODES: { mode: FuelConsumptionMode; label: string }[] = [
-  { mode: 'laden', label: 'Laden' },
-  { mode: 'ballast', label: 'Ballast' },
-  { mode: 'idle_anchor', label: 'Idle / Anchor' },
-  { mode: 'discharging', label: 'Discharging' },
+const FUEL_MODE_KEYS: { mode: FuelConsumptionMode; labelKey: string }[] = [
+  { mode: 'laden', labelKey: 'vessels.modeLaden' },
+  { mode: 'ballast', labelKey: 'vessels.modeBallast' },
+  { mode: 'idle_anchor', labelKey: 'vessels.modeIdleAnchor' },
+  { mode: 'discharging', labelKey: 'vessels.modeDischarging' },
 ]
 
 type FuelRates = Record<FuelConsumptionMode, { ifo: string; mgo: string }>
@@ -35,11 +36,13 @@ const EMPTY_FUEL_RATES: FuelRates = {
 }
 
 export default function VesselsPage() {
+  const { t } = useTranslation()
   const [vessels, setVessels] = useState<Vessel[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<VesselCreate>(EMPTY_FORM)
   const [fuelRates, setFuelRates] = useState<FuelRates>(EMPTY_FUEL_RATES)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listVessels().then(setVessels)
 
@@ -56,122 +59,171 @@ export default function VesselsPage() {
     (mode: FuelConsumptionMode, grade: 'ifo' | 'mgo') => (e: React.ChangeEvent<HTMLInputElement>) =>
       setFuelRates((rates) => ({ ...rates, [mode]: { ...rates[mode], [grade]: e.target.value } }))
 
+  const handleDelete = async (vessel: Vessel) => {
+    if (!window.confirm(t('vessels.deleteConfirm', { name: vessel.name }))) return
+    setError(null)
+    try {
+      await deleteVessel(vessel.id)
+      if (editingId === vessel.id) handleCancelEdit()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete vessel')
+    }
+  }
+
+  const handleEdit = (vessel: Vessel) => {
+    setError(null)
+    setEditingId(vessel.id)
+    const { fuel_consumption_profiles, ...rest } = vessel
+    setForm({ ...rest, fuel_consumption_profiles: [] })
+    const rates = { ...EMPTY_FUEL_RATES }
+    for (const profile of fuel_consumption_profiles) {
+      rates[profile.mode] = { ifo: String(profile.ifo_mt_per_day), mgo: String(profile.mgo_mt_per_day) }
+    }
+    setFuelRates(rates)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setFuelRates(EMPTY_FUEL_RATES)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
-      const fuel_consumption_profiles = FUEL_MODES.map(({ mode }) => ({
+      const fuel_consumption_profiles = FUEL_MODE_KEYS.map(({ mode }) => ({
         mode,
         ifo_mt_per_day: Number(fuelRates[mode].ifo) || 0,
         mgo_mt_per_day: Number(fuelRates[mode].mgo) || 0,
       }))
-      await createVessel({ ...form, fuel_consumption_profiles })
-      setForm(EMPTY_FORM)
-      setFuelRates(EMPTY_FUEL_RATES)
+      if (editingId !== null) {
+        await updateVessel(editingId, { ...form, fuel_consumption_profiles })
+      } else {
+        await createVessel({ ...form, fuel_consumption_profiles })
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to register vessel')
+      setError(err instanceof Error ? err.message : 'Failed to save vessel')
     }
   }
 
   return (
     <div>
-      <h1>Vessels</h1>
+      <h1>{t('vessels.title')}</h1>
 
       {loading ? (
-        <p>Loading…</p>
+        <p>{t('common.loading')}</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>IMO</th>
-              <th>Ice Class</th>
-            </tr>
-          </thead>
-          <tbody>
-            {vessels.map((v) => (
-              <tr key={v.id}>
-                <td>{v.name}</td>
-                <td>{v.imo_number}</td>
-                <td>{v.ice_class}</td>
+        <div style={{ maxHeight: '27rem', overflowY: 'auto', border: '1px solid #ccc' }}>
+          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+            <thead style={{ position: 'sticky', top: 0, background: '#fff' }}>
+              <tr>
+                <th>{t('vessels.columnName')}</th>
+                <th>{t('vessels.columnImo')}</th>
+                <th>{t('vessels.columnIceClass')}</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {vessels.map((v) => (
+                <tr key={v.id}>
+                  <td>{v.name}</td>
+                  <td>{v.imo_number}</td>
+                  <td>{v.ice_class}</td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(v)}>
+                      {t('common.edit')}
+                    </button>
+                    <button type="button" onClick={() => handleDelete(v)}>
+                      {t('common.delete')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
-      <h2>Register Vessel</h2>
+      <h2>{editingId !== null ? t('vessels.editVessel') : t('vessels.registerVessel')}</h2>
       <form onSubmit={handleSubmit}>
         <label>
-          Name
+          {t('vessels.name')}
           <input value={form.name} onChange={field('name')} required />
         </label>
         <label>
-          IMO Number
+          {t('vessels.imoNumber')}
           <input value={form.imo_number} onChange={field('imo_number')} required />
         </label>
         <label>
-          Flag
+          {t('vessels.flag')}
           <input value={form.flag} onChange={field('flag')} required />
         </label>
         <label>
-          Year Built
-          <input type="number" value={form.year_built || ''} onChange={field('year_built', true)} required />
+          {t('vessels.yearBuilt')}
+          <input type="number" value={form.year_built} onChange={field('year_built', true)} required />
         </label>
         <label>
-          DWT
-          <input type="number" value={form.dwt || ''} onChange={field('dwt', true)} required />
+          {t('vessels.dwt')}
+          <input type="number" value={form.dwt} onChange={field('dwt', true)} required />
         </label>
         <label>
-          LOA
-          <input type="number" value={form.loa || ''} onChange={field('loa', true)} required />
+          {t('vessels.loa')}
+          <input type="number" value={form.loa} onChange={field('loa', true)} required />
         </label>
         <label>
-          Beam
-          <input type="number" value={form.beam || ''} onChange={field('beam', true)} required />
+          {t('vessels.beam')}
+          <input type="number" value={form.beam} onChange={field('beam', true)} required />
         </label>
         <label>
-          Draft
-          <input type="number" value={form.draft || ''} onChange={field('draft', true)} required />
+          {t('vessels.draft')}
+          <input type="number" value={form.draft} onChange={field('draft', true)} required />
         </label>
         <label>
-          Cargo Tank Capacity (cbm)
+          {t('vessels.cargoTankCapacity')}
           <input
             type="number"
-            value={form.cargo_tank_capacity_cbm || ''}
+            value={form.cargo_tank_capacity_cbm}
             onChange={field('cargo_tank_capacity_cbm', true)}
             required
           />
         </label>
         <label>
-          Ice Class
+          {t('vessels.iceClass')}
           <input value={form.ice_class} onChange={field('ice_class')} required />
         </label>
         <label>
-          Engine Power (kW)
+          {t('vessels.enginePower')}
           <input
             type="number"
-            value={form.engine_power_kw || ''}
+            value={form.engine_power_kw}
             onChange={field('engine_power_kw', true)}
             required
           />
         </label>
-        <h3 style={{ gridColumn: '1 / -1', marginBottom: 0 }}>Fuel Consumption (MT/day)</h3>
-        {FUEL_MODES.map(({ mode, label }) => (
+        <h3 style={{ gridColumn: '1 / -1', marginBottom: 0 }}>{t('vessels.fuelConsumptionHeading')}</h3>
+        {FUEL_MODE_KEYS.map(({ mode, labelKey }) => (
           <label key={`${mode}-ifo`}>
-            {label} IFO
+            {t(labelKey)} IFO
             <input type="number" step="0.01" value={fuelRates[mode].ifo} onChange={fuelField(mode, 'ifo')} />
           </label>
         ))}
-        {FUEL_MODES.map(({ mode, label }) => (
+        {FUEL_MODE_KEYS.map(({ mode, labelKey }) => (
           <label key={`${mode}-mgo`}>
-            {label} MGO
+            {t(labelKey)} MGO
             <input type="number" step="0.01" value={fuelRates[mode].mgo} onChange={fuelField(mode, 'mgo')} />
           </label>
         ))}
 
-        <button type="submit">Register Vessel</button>
+        <button type="submit">{editingId !== null ? t('vessels.updateVessel') : t('vessels.registerVessel')}</button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
       {error && <p role="alert">{error}</p>}
     </div>

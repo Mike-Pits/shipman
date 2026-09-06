@@ -72,7 +72,7 @@ def voyage_pnl(voyage_id: int, format: ReportFormat = "json", db: Session = Depe
 @router.get("/tce/{voyage_id}")
 def tce(voyage_id: int, format: ReportFormat = "json", db: Session = Depends(get_db)):
     voyage = _voyage_or_404(voyage_id, db)
-    if voyage.end_date is None:
+    if not voyage.end_date:
         raise HTTPException(
             status_code=422,
             detail="Voyage has no end date yet — TCE cannot be calculated until the voyage is complete",

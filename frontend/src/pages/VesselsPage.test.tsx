@@ -117,4 +117,146 @@ describe('VesselsPage', () => {
       { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1 },
     ])
   })
+
+  it('lets the operator delete a vessel after confirming, and removes it from the list', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const fetchMock = mockFetchSequence([
+      {
+        status: 200,
+        body: [{ id: 1, name: 'SP Baltic Trader', imo_number: '9123456', ice_class: 'Arc4' }],
+      },
+      { status: 204, body: undefined },
+      { status: 200, body: [] },
+    ])
+
+    render(<VesselsPage />)
+    expect(await screen.findByText('SP Baltic Trader')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByText('SP Baltic Trader')).not.toBeInTheDocument())
+    const deleteCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'DELETE')
+    expect(deleteCall?.[0]).toContain('/vessels/1')
+  })
+
+  it('does not delete the vessel when the operator cancels the confirmation', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const fetchMock = mockFetchSequence([
+      {
+        status: 200,
+        body: [{ id: 1, name: 'SP Baltic Trader', imo_number: '9123456', ice_class: 'Arc4' }],
+      },
+    ])
+
+    render(<VesselsPage />)
+    expect(await screen.findByText('SP Baltic Trader')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+    expect(screen.getByText('SP Baltic Trader')).toBeInTheDocument()
+  })
+
+  it('lets the operator edit a vessel: clicking Edit pre-fills the form and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const existingVessel = {
+      id: 5,
+      name: 'SP Baltic Trader',
+      imo_number: '9123456',
+      flag: 'Russia',
+      year_built: 2015,
+      vessel_type: 'clean/product tanker',
+      dwt: 8500,
+      loa: 120.5,
+      beam: 18.2,
+      draft: 7.1,
+      cargo_tank_capacity_cbm: 9800,
+      ice_class: 'Arc4',
+      engine_power_kw: 4500,
+      fuel_consumption_profiles: [
+        { id: 1, mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5 },
+        { id: 2, mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5 },
+        { id: 3, mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2 },
+        { id: 4, mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1 },
+      ],
+    }
+    const updatedVessel = { ...existingVessel, ice_class: 'Arc7' }
+    const fetchMock = mockFetchSequence([
+      { status: 200, body: [existingVessel] },
+      { status: 200, body: updatedVessel },
+      { status: 200, body: [updatedVessel] },
+    ])
+
+    render(<VesselsPage />)
+    expect(await screen.findByText('SP Baltic Trader')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+
+    expect(screen.getByLabelText(/^name/i)).toHaveValue('SP Baltic Trader')
+    expect(screen.getByLabelText(/laden ifo/i)).toHaveValue(18.5)
+
+    const iceClassInput = screen.getByLabelText(/ice class/i)
+    await user.clear(iceClassInput)
+    await user.type(iceClassInput, 'Arc7')
+    await user.click(screen.getByRole('button', { name: /update vessel/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    const putCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+    expect(putCall?.[0]).toContain('/vessels/5')
+    const body = JSON.parse(putCall![1].body as string)
+    expect(body.ice_class).toBe('Arc7')
+    expect(body.name).toBe('SP Baltic Trader')
+    expect(body.fuel_consumption_profiles).toEqual([
+      { mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5 },
+      { mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5 },
+      { mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2 },
+      { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1 },
+    ])
+  })
+
+  it('lets the operator save an edit even when the vessel has genuine zero-value numeric fields', async () => {
+    // Regression test: value={form.field || ''} used to render a real 0 as an empty
+    // string, which fails native `required` validation and silently blocks submission.
+    const user = userEvent.setup()
+    const zeroValueVessel = {
+      id: 9,
+      name: 'test_ship',
+      imo_number: 'test_nr',
+      flag: 'string',
+      year_built: 0,
+      vessel_type: 'string',
+      dwt: 0,
+      loa: 0,
+      beam: 0,
+      draft: 0,
+      cargo_tank_capacity_cbm: 0,
+      ice_class: 'string',
+      engine_power_kw: 0,
+      fuel_consumption_profiles: [],
+    }
+    const fetchMock = mockFetchSequence([
+      { status: 200, body: [zeroValueVessel] },
+      { status: 200, body: { ...zeroValueVessel, ice_class: 'Arc4' } },
+      { status: 200, body: [{ ...zeroValueVessel, ice_class: 'Arc4' }] },
+    ])
+
+    render(<VesselsPage />)
+    expect(await screen.findByText('test_ship')).toBeInTheDocument()
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+    const iceClassInput = screen.getByLabelText(/ice class/i)
+    await user.clear(iceClassInput)
+    await user.type(iceClassInput, 'Arc4')
+    await user.click(screen.getByRole('button', { name: /update vessel/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    const putCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+    expect(putCall).toBeDefined()
+    const body = JSON.parse(putCall![1].body as string)
+    expect(body.dwt).toBe(0)
+    expect(body.ice_class).toBe('Arc4')
+  })
 })

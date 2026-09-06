@@ -53,3 +53,6 @@ Ice class is a vessel attribute (structured field). Icebreaker/escort assistance
 
 **PDA / FDA itemization**:
 PDA is recorded as a lump-sum estimate (matches how agents issue it — a funding estimate, not a breakdown). FDA is itemized by cost line (pilotage, towage, agency fee, etc.), since reconciliation and disputes happen at the line-item level in practice.
+
+**Vessel Naming Policy**:
+Russian-flagged vessels are registered under their Russian name and spelling (e.g. «СП Диксон», not a Latin transliteration like "NP Dikson") — a single naming convention per vessel, chosen to match how the vessel's own name appears in its DISP-01 report preambles. This was adopted after a real data-integrity incident: earlier test vessels were registered under inconsistent transliterations, which is exactly the kind of mismatch that defeats any future content-based cross-check between a message's stated vessel name and the registered one (see the folder↔vessel registry safeguard, [ADR-0005](docs/adr/0005-folder-vessel-registry-safeguard.md)).

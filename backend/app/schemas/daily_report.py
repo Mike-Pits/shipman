@@ -9,6 +9,7 @@ class DailyReportCreate(BaseModel):
 
 class DailyReportUpdate(BaseModel):
     raw_text: str
+    vessel_id: int | None = None
     override: bool = False
 
 

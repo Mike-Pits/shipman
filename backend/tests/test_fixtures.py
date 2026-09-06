@@ -157,3 +157,39 @@ def test_operator_can_create_and_retrieve_a_voyage_charter_fixture(client):
     fetched = get_response.json()
     assert fetched["fixture_type"] == "voyage_charter"
     assert fetched["discharge_port"] == "Rotterdam"
+
+
+def test_operator_can_update_a_fixture(client):
+    created = client.post("/fixtures", json=voyage_charter_payload()).json()
+
+    response = client.put(
+        f"/fixtures/{created['id']}",
+        json=voyage_charter_payload(charterer="Corrected Charterer Name"),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["charterer"] == "Corrected Charterer Name"
+    assert client.get(f"/fixtures/{created['id']}").json()["charterer"] == "Corrected Charterer Name"
+
+
+def test_updating_a_fixture_replaces_its_brokers(client):
+    created = client.post(
+        "/fixtures",
+        json=voyage_charter_payload(brokers=[{"broker_name": "Old Broker", "commission_percentage": 1.0}]),
+    ).json()
+
+    response = client.put(
+        f"/fixtures/{created['id']}",
+        json=voyage_charter_payload(brokers=[{"broker_name": "New Broker", "commission_percentage": 2.0}]),
+    )
+
+    assert response.status_code == 200
+    brokers = response.json()["brokers"]
+    assert len(brokers) == 1
+    assert brokers[0]["broker_name"] == "New Broker"
+
+
+def test_updating_an_unknown_fixture_returns_404(client):
+    response = client.put("/fixtures/999", json=voyage_charter_payload())
+
+    assert response.status_code == 404

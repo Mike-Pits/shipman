@@ -36,6 +36,20 @@ def list_fixtures(db: Session = Depends(get_db)):
     return db.query(Fixture).all()
 
 
+@router.put("/{fixture_id}", response_model=FixtureRead)
+def update_fixture(fixture_id: int, payload: FixtureCreate, db: Session = Depends(get_db)):
+    fixture = db.get(Fixture, fixture_id)
+    if fixture is None:
+        raise HTTPException(status_code=404, detail="Fixture not found")
+
+    for field, value in payload.model_dump(exclude={"brokers"}).items():
+        setattr(fixture, field, value)
+    fixture.brokers = [FixtureBroker(**broker.model_dump()) for broker in payload.brokers]
+    db.commit()
+    db.refresh(fixture)
+    return fixture
+
+
 @router.get("/{fixture_id}", response_model=FixtureRead)
 def get_fixture(fixture_id: int, db: Session = Depends(get_db)):
     fixture = db.get(Fixture, fixture_id)

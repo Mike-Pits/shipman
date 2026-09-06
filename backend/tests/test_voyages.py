@@ -73,3 +73,27 @@ def test_creating_a_voyage_for_an_unknown_fixture_returns_404(client):
     response = client.post("/voyages", json=voyage_payload(fixture_id=999, vessel_id=vessel_id))
 
     assert response.status_code == 404
+
+
+def test_operator_can_update_a_voyage(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)
+    created = client.post("/voyages", json=voyage_payload(fixture_id, vessel_id)).json()
+
+    response = client.put(
+        f"/voyages/{created['id']}",
+        json=voyage_payload(fixture_id, vessel_id, cargo_quantity_mt=9000.0),
+    )
+
+    assert response.status_code == 200
+    assert response.json()["cargo_quantity_mt"] == 9000.0
+    assert client.get(f"/voyages/{created['id']}").json()["cargo_quantity_mt"] == 9000.0
+
+
+def test_updating_an_unknown_voyage_returns_404(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)
+
+    response = client.put("/voyages/999", json=voyage_payload(fixture_id, vessel_id))
+
+    assert response.status_code == 404

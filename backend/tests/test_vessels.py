@@ -77,3 +77,76 @@ def test_updating_an_unknown_vessel_returns_404(client):
     response = client.put("/vessels/999", json=vessel_payload())
 
     assert response.status_code == 404
+
+
+def test_registering_a_vessel_with_a_duplicate_imo_number_is_rejected_cleanly(client):
+    client.post("/vessels", json=vessel_payload())
+
+    response = client.post("/vessels", json=vessel_payload(name="A Different Ship"))
+
+    assert response.status_code == 409
+    assert "imo" in response.json()["detail"].lower()
+
+
+def test_updating_a_vessel_to_a_duplicate_imo_number_is_rejected_cleanly(client):
+    client.post("/vessels", json=vessel_payload())
+    other = client.post(
+        "/vessels", json=vessel_payload(name="Other Ship", imo_number="9999999")
+    ).json()
+
+    response = client.put(f"/vessels/{other['id']}", json=vessel_payload())
+
+    assert response.status_code == 409
+    assert "imo" in response.json()["detail"].lower()
+
+
+def test_operator_can_delete_a_vessel_with_no_dependent_records(client):
+    created = client.post("/vessels", json=vessel_payload()).json()
+
+    response = client.delete(f"/vessels/{created['id']}")
+
+    assert response.status_code == 204
+    assert client.get(f"/vessels/{created['id']}").status_code == 404
+    assert created["id"] not in [v["id"] for v in client.get("/vessels").json()]
+
+
+def test_deleting_an_unknown_vessel_returns_404(client):
+    response = client.delete("/vessels/999")
+
+    assert response.status_code == 404
+
+
+def test_deleting_a_vessel_with_a_linked_voyage_is_rejected(client):
+    vessel_id = client.post("/vessels", json=vessel_payload()).json()["id"]
+    fixture_id = client.post(
+        "/fixtures",
+        json={
+            "fixture_type": "voyage_charter",
+            "charterer": "Test Charterer",
+            "contract_currency": "USD",
+            "freight_rate": 25.0,
+            "freight_rate_basis": "per_tonne",
+            "load_port": "Ust-Luga",
+            "discharge_port": "Rotterdam",
+            "cargo_grade": "gasoil",
+        },
+    ).json()["id"]
+    client.post(
+        "/voyages",
+        json={
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "voyage_number": "V-001",
+            "load_port": "Ust-Luga",
+            "discharge_port": "Rotterdam",
+            "start_date": "2026-06-01",
+            "cargo_grade": "gasoil",
+            "cargo_quantity_mt": 5000,
+            "laden": True,
+        },
+    )
+
+    response = client.delete(f"/vessels/{vessel_id}")
+
+    assert response.status_code == 409
+    assert client.get(f"/vessels/{vessel_id}").status_code == 200

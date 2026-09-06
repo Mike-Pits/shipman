@@ -13,3 +13,17 @@ class ImapSettings(Base):
 
     id: Mapped[int] = mapped_column(Integer, primary_key=True)
     folder: Mapped[str] = mapped_column(String, nullable=False)
+
+
+class ImapFolderVesselMapping(Base):
+    """Folder↔vessel registry safeguard: remembers which vessel each IMAP folder
+    was last (confirmed to be) polled for, so that polling a known folder under a
+    different vessel is caught rather than silently misattributing every message
+    in it — this is the accident the registry exists to prevent, not a
+    hypothetical one (see ADR-0005)."""
+
+    __tablename__ = "imap_folder_vessel_mappings"
+
+    id: Mapped[int] = mapped_column(Integer, primary_key=True)
+    folder: Mapped[str] = mapped_column(String, unique=True, nullable=False)
+    vessel_id: Mapped[int] = mapped_column(Integer, nullable=False)

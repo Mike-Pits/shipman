@@ -1,9 +1,15 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Response
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.bunker_replenishment import BunkerReplenishment
+from app.models.daily_report import DailyReport
+from app.models.payment import Payment
 from app.models.vessel import FuelConsumptionProfile, Vessel
 from app.models.vetting_inspection import VettingInspection
+from app.models.voyage import Voyage
+from app.models.voyage_estimate import VoyageEstimate
 from app.schemas.vessel import VesselCreate, VesselRead
 from app.schemas.vetting_inspection import (
     VettingInspectionCreate,
@@ -13,6 +19,8 @@ from app.schemas.vetting_inspection import (
 from app.services.vetting import current_vetting_status
 
 router = APIRouter(prefix="/vessels", tags=["vessels"])
+
+DUPLICATE_IMO_DETAIL = "A vessel with this IMO number already exists"
 
 
 @router.post("", response_model=VesselRead, status_code=201)
@@ -25,7 +33,11 @@ def create_vessel(payload: VesselCreate, db: Session = Depends(get_db)):
         ],
     )
     db.add(vessel)
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_IMO_DETAIL) from exc
     db.refresh(vessel)
     return vessel
 
@@ -55,9 +67,40 @@ def update_vessel(vessel_id: int, payload: VesselCreate, db: Session = Depends(g
         FuelConsumptionProfile(**profile.model_dump())
         for profile in payload.fuel_consumption_profiles
     ]
-    db.commit()
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail=DUPLICATE_IMO_DETAIL) from exc
     db.refresh(vessel)
     return vessel
+
+
+@router.delete("/{vessel_id}", status_code=204)
+def delete_vessel(vessel_id: int, db: Session = Depends(get_db)):
+    vessel = db.get(Vessel, vessel_id)
+    if vessel is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    dependent_checks = (
+        (Voyage, "voyages"),
+        (DailyReport, "daily reports"),
+        (Payment, "payments"),
+        (BunkerReplenishment, "bunker replenishments"),
+        (VoyageEstimate, "voyage estimates"),
+    )
+    for model, label in dependent_checks:
+        if db.query(model).filter(model.vessel_id == vessel_id).first() is not None:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Cannot delete vessel: it has existing {label}. "
+                "Remove or reassign those records first.",
+            )
+
+    db.query(VettingInspection).filter(VettingInspection.vessel_id == vessel_id).delete()
+    db.delete(vessel)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post(

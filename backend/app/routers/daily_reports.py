@@ -1,7 +1,6 @@
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from app import config
@@ -9,11 +8,17 @@ from app.database import get_db
 from app.dependencies import get_imap_fetcher
 from app.models.bunker_replenishment import BunkerReplenishment
 from app.models.daily_report import DailyReport
-from app.models.imap_settings import ImapSettings
+from app.models.imap_settings import ImapFolderVesselMapping, ImapSettings
 from app.models.vessel import FuelConsumptionProfile, Vessel
 from app.models.voyage import Voyage
 from app.schemas.daily_report import DailyReportCreate, DailyReportRead, DailyReportUpdate
-from app.schemas.imap_settings import ImapPollRequest, ImapPollResult, ImapSettingsRead, ImapSettingsUpdate
+from app.schemas.imap_settings import (
+    ImapFolderMappingRead,
+    ImapPollRequest,
+    ImapPollResult,
+    ImapSettingsRead,
+    ImapSettingsUpdate,
+)
 from app.services.disp01_parser import Disp01ParseError, parse_disp01, parse_rob
 
 router = APIRouter(prefix="/daily-reports", tags=["daily-reports"])
@@ -99,9 +104,9 @@ def _to_read(report: DailyReport, db: Session) -> DailyReportRead:
     return base.model_copy(update={"warnings": _compute_fuel_warnings(report, db)})
 
 
-def _parse_and_validate(raw_text: str) -> tuple[dict, datetime]:
+def _parse_and_validate(raw_text: str, reference_date=None) -> tuple[dict, datetime]:
     try:
-        parsed = parse_disp01(raw_text)
+        parsed = parse_disp01(raw_text, reference_date=reference_date)
     except Disp01ParseError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
 
@@ -112,32 +117,46 @@ def _parse_and_validate(raw_text: str) -> tuple[dict, datetime]:
     return parsed["fields"], parsed["report_datetime"]
 
 
-def _check_no_duplicate(db: Session, vessel_id: int, report_date_str: str, exclude_id: int | None = None):
+def _check_no_duplicate(db: Session, vessel_id: int, report_datetime_str: str, exclude_id: int | None = None):
+    """A vessel can legitimately send more than one DISP-01 report on the same
+    calendar day (e.g. multiple updates during busy port operations — confirmed
+    against real historical data), so uniqueness is keyed on the exact reported
+    datetime, not just the date."""
     query = db.query(DailyReport).filter(
         DailyReport.vessel_id == vessel_id,
-        func.substr(DailyReport.report_datetime, 1, 10) == report_date_str,
+        DailyReport.report_datetime == report_datetime_str,
     )
     if exclude_id is not None:
         query = query.filter(DailyReport.id != exclude_id)
     if query.first() is not None:
         raise HTTPException(
-            status_code=409, detail="A report already exists for this vessel and date"
+            status_code=409, detail="A report already exists for this vessel at this exact date/time"
         )
 
 
 def _ingest_report(
-    db: Session, vessel_id: int, raw_text: str, voyage_id: int | None = None, source_message_id: str | None = None
+    db: Session,
+    vessel_id: int,
+    raw_text: str,
+    voyage_id: int | None = None,
+    source_message_id: str | None = None,
+    reference_date=None,
 ) -> DailyReport:
     """Shared by manual entry (FR-15) and IMAP retrieval (FR-16) — both channels
-    go through the same parser, date rules, and duplicate check."""
-    fields, report_datetime = _parse_and_validate(raw_text)
-    report_date_str = report_datetime.strftime("%Y-%m-%d")
-    _check_no_duplicate(db, vessel_id, report_date_str)
+    go through the same parser, date rules, and duplicate check.
+
+    reference_date anchors year-inference for a native (non-explicit-year) date
+    line — see disp01_parser.parse_report_datetime. IMAP retrieval passes the
+    source email's own Date header here so archived/historical messages resolve
+    to their real year instead of being interpreted relative to today."""
+    fields, report_datetime = _parse_and_validate(raw_text, reference_date=reference_date)
+    report_datetime_str = report_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    _check_no_duplicate(db, vessel_id, report_datetime_str)
 
     report = DailyReport(
         vessel_id=vessel_id,
         voyage_id=voyage_id,
-        report_datetime=report_datetime.strftime("%Y-%m-%d %H:%M:%S"),
+        report_datetime=report_datetime_str,
         raw_text=raw_text,
         fields=fields,
         approved=False,
@@ -156,6 +175,15 @@ def create_daily_report(payload: DailyReportCreate, db: Session = Depends(get_db
 
     report = _ingest_report(db, payload.vessel_id, payload.raw_text, voyage_id=payload.voyage_id)
     return _to_read(report, db)
+
+
+@router.get("", response_model=list[DailyReportRead])
+def list_daily_reports(vessel_id: int | None = None, db: Session = Depends(get_db)):
+    query = db.query(DailyReport)
+    if vessel_id is not None:
+        query = query.filter(DailyReport.vessel_id == vessel_id)
+    reports = query.order_by(DailyReport.report_datetime.desc()).all()
+    return [_to_read(r, db) for r in reports]
 
 
 def _get_or_create_imap_settings(db: Session) -> ImapSettings:
@@ -191,6 +219,17 @@ def update_imap_settings(payload: ImapSettingsUpdate, db: Session = Depends(get_
     return settings
 
 
+@router.get("/imap-folder-mapping/{folder}", response_model=ImapFolderMappingRead)
+def get_imap_folder_mapping(folder: str, db: Session = Depends(get_db)):
+    """Lets the operator check which vessel a folder is registered to *before*
+    polling — the reactive 409 in poll_imap is the hard safeguard, this is the
+    proactive check (see ADR-0005)."""
+    mapping = db.query(ImapFolderVesselMapping).filter_by(folder=folder).first()
+    if mapping is None:
+        raise HTTPException(status_code=404, detail="This folder has never been polled")
+    return mapping
+
+
 @router.post("/poll-imap", response_model=ImapPollResult)
 def poll_imap(
     payload: ImapPollRequest,
@@ -205,10 +244,28 @@ def poll_imap(
         raise HTTPException(status_code=404, detail="Vessel not found")
 
     folder = _get_or_create_imap_settings(db).folder
+
+    mapping = db.query(ImapFolderVesselMapping).filter_by(folder=folder).first()
+    if mapping is not None and mapping.vessel_id != payload.vessel_id and not payload.confirm_vessel_change:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"Folder '{folder}' was last polled for vessel_id={mapping.vessel_id}, "
+                f"not vessel_id={payload.vessel_id}. If this vessel selection is correct, "
+                "retry with confirm_vessel_change=true."
+            ),
+        )
+
     try:
         messages = imap_fetcher(folder)
     except Exception as exc:
         raise HTTPException(status_code=502, detail=f"IMAP fetch failed: {exc}") from exc
+
+    if mapping is None:
+        db.add(ImapFolderVesselMapping(folder=folder, vessel_id=payload.vessel_id))
+    else:
+        mapping.vessel_id = payload.vessel_id
+    db.commit()
 
     already_ingested = {
         row[0]
@@ -221,12 +278,18 @@ def poll_imap(
     skipped_duplicates: list[str] = []
     errors: list[dict] = []
 
-    for message_id, body in messages:
+    for message_id, body, email_date in messages:
         if message_id in already_ingested:
             skipped_duplicates.append(message_id)
             continue
         try:
-            report = _ingest_report(db, payload.vessel_id, body, source_message_id=message_id)
+            report = _ingest_report(
+                db,
+                payload.vessel_id,
+                body,
+                source_message_id=message_id,
+                reference_date=email_date.date() if email_date else None,
+            )
         except HTTPException as exc:
             errors.append({"message_id": message_id, "detail": exc.detail})
             continue
@@ -259,13 +322,20 @@ def update_daily_report(report_id: int, payload: DailyReportUpdate, db: Session 
             detail="Report is approved and cannot be edited without override",
         )
 
+    target_vessel_id = report.vessel_id
+    if payload.vessel_id is not None and payload.vessel_id != report.vessel_id:
+        if db.get(Vessel, payload.vessel_id) is None:
+            raise HTTPException(status_code=404, detail="Vessel not found")
+        target_vessel_id = payload.vessel_id
+
     fields, report_datetime = _parse_and_validate(payload.raw_text)
-    report_date_str = report_datetime.strftime("%Y-%m-%d")
-    _check_no_duplicate(db, report.vessel_id, report_date_str, exclude_id=report_id)
+    report_datetime_str = report_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    _check_no_duplicate(db, target_vessel_id, report_datetime_str, exclude_id=report_id)
 
     report.raw_text = payload.raw_text
     report.fields = fields
-    report.report_datetime = report_datetime.strftime("%Y-%m-%d %H:%M:%S")
+    report.report_datetime = report_datetime_str
+    report.vessel_id = target_vessel_id
     db.commit()
     db.refresh(report)
     return _to_read(report, db)

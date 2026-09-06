@@ -9,6 +9,7 @@ class ImapSettingsUpdate(BaseModel):
 
 class ImapPollRequest(BaseModel):
     vessel_id: int
+    confirm_vessel_change: bool = False
 
 
 class ImapSettingsRead(BaseModel):
@@ -21,3 +22,10 @@ class ImapPollResult(BaseModel):
     ingested: list[DailyReportRead]
     skipped_duplicates: list[str]
     errors: list[dict]
+
+
+class ImapFolderMappingRead(BaseModel):
+    model_config = ConfigDict(from_attributes=True)
+
+    folder: str
+    vessel_id: int
