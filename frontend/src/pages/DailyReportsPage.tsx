@@ -12,6 +12,7 @@ import {
   updateImapSettings,
 } from '../api/dailyReports'
 import { listVessels } from '../api/vessels'
+import Badge from '../components/ui/Badge'
 import type { DailyReport, ImapFolderMapping, ImapPollResult, Vessel } from '../api/types'
 
 export default function DailyReportsPage() {
@@ -206,6 +207,7 @@ export default function DailyReportsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -224,7 +226,11 @@ export default function DailyReportsPage() {
                   <td>{r.report_datetime}</td>
                   <td>{vesselName(r.vessel_id)}</td>
                   <td>{r.fields['2'] ?? '—'}</td>
-                  <td>{r.approved ? t('dailyReports.statusApproved') : t('dailyReports.statusPending')}</td>
+                  <td>
+                    <Badge tone={r.approved ? 'success' : 'neutral'}>
+                      {r.approved ? t('dailyReports.statusApproved') : t('dailyReports.statusPending')}
+                    </Badge>
+                  </td>
                   <td>{r.source_message_id ? t('dailyReports.sourceImap') : t('dailyReports.sourceManual')}</td>
                   <td>
                     <button
@@ -257,7 +263,7 @@ export default function DailyReportsPage() {
                         value={editText}
                         onChange={(e) => setEditText(e.target.value)}
                         rows={6}
-                        style={{ width: '100%' }}
+                        className="w-full"
                       />
                       <button type="button" onClick={() => handleSaveEdit(r)}>
                         {t('dailyReports.save')}
@@ -296,8 +302,13 @@ export default function DailyReportsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

@@ -1,0 +1,53 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-sm);
+  padding: var(--space-4);
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: var(--space-4);
+  margin-bottom: var(--space-5);
+  max-width: 1100px;
+}
+
+.stat-card {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.stat-card-label {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--color-text-secondary);
+}
+
+.stat-card-value {
+  font-size: 28px;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-heading);
+}
+
+.stat-card-value.tone-success {
+  color: var(--color-success);
+}
+
+.stat-card-value.tone-warning {
+  color: var(--color-warning);
+}
+
+.stat-card-value.tone-danger {
+  color: var(--color-danger);
+}
+
+.stat-card-sub {
+  font-size: 12px;
+  color: var(--color-text-secondary);
+}

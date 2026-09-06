@@ -140,3 +140,99 @@ def test_operator_can_list_and_retrieve_disbursement_accounts(client):
     get_response = client.get(f"/disbursement-accounts/{created['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["port"] == "Rotterdam"
+
+
+def test_operator_can_correct_the_pda_header_fields(client):
+    voyage_id = _create_voyage(client)
+    created = client.post(
+        "/disbursement-accounts",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    ).json()
+
+    response = client.put(
+        f"/disbursement-accounts/{created['id']}",
+        json={"voyage_id": voyage_id, "port": "Rotterdam Port", "pda_amount": 16000, "pda_currency": "USD", "pda_date": "2026-06-06"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["port"] == "Rotterdam Port"
+    assert updated["pda_amount"] == 16000
+    assert updated["variance"] == -16000
+
+
+def test_correcting_a_da_for_an_unknown_voyage_is_rejected(client):
+    voyage_id = _create_voyage(client)
+    created = client.post(
+        "/disbursement-accounts",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    ).json()
+
+    response = client.put(
+        f"/disbursement-accounts/{created['id']}",
+        json={"voyage_id": 999999, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    )
+
+    assert response.status_code == 404
+
+
+def test_correcting_the_pda_header_preserves_status_and_fda_lines(client):
+    voyage_id = _create_voyage(client)
+    da = client.post(
+        "/disbursement-accounts",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    ).json()
+    client.post(
+        f"/disbursement-accounts/{da['id']}/fda-lines",
+        json={"lines": [{"line_type": "pilotage", "description": "Inbound pilot", "amount": 3000, "currency": "USD"}]},
+    )
+
+    response = client.put(
+        f"/disbursement-accounts/{da['id']}",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 16000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["status"] == "fda_pending"
+    assert len(updated["lines"]) == 1
+
+
+def test_operator_can_correct_an_individual_fda_line(client):
+    voyage_id = _create_voyage(client)
+    da = client.post(
+        "/disbursement-accounts",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    ).json()
+    with_line = client.post(
+        f"/disbursement-accounts/{da['id']}/fda-lines",
+        json={"lines": [{"line_type": "pilotage", "description": "Inbound pilot", "amount": 3000, "currency": "USD"}]},
+    ).json()
+    line_id = with_line["lines"][0]["id"]
+
+    response = client.put(
+        f"/disbursement-accounts/{da['id']}/fda-lines/{line_id}",
+        json={"line_type": "pilotage", "description": "Inbound pilot (corrected)", "amount": 3200, "currency": "USD"},
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["lines"][0]["description"] == "Inbound pilot (corrected)"
+    assert updated["lines"][0]["amount"] == 3200
+    assert updated["fda_total"] == 3200
+    assert updated["variance"] == -11800
+
+
+def test_correcting_an_fda_line_that_does_not_belong_to_the_da_is_rejected(client):
+    voyage_id = _create_voyage(client)
+    da = client.post(
+        "/disbursement-accounts",
+        json={"voyage_id": voyage_id, "port": "Rotterdam", "pda_amount": 15000, "pda_currency": "USD", "pda_date": "2026-06-05"},
+    ).json()
+
+    response = client.put(
+        f"/disbursement-accounts/{da['id']}/fda-lines/999999",
+        json={"line_type": "pilotage", "description": "Inbound pilot", "amount": 3000, "currency": "USD"},
+    )
+
+    assert response.status_code == 404

@@ -82,6 +82,23 @@ def _daily_hire_rate(fixture: Fixture) -> float:
     return fixture.hire_rate if fixture.hire_rate_basis == "daily" else fixture.hire_rate / 30
 
 
+def _tc_out_fixture_or_422(voyage: Voyage, db: Session) -> Fixture:
+    fixture = db.get(Fixture, voyage.fixture_id)
+    if fixture is None or fixture.fixture_type != "time_charter_out":
+        raise HTTPException(
+            status_code=422,
+            detail="Off-hire periods can only be recorded for a Time Charter Out voyage",
+        )
+    return fixture
+
+
+def _calculated_deduction(fixture: Fixture, payload: OffHirePeriodCreate) -> float:
+    start = datetime.strptime(payload.start_datetime, "%Y-%m-%d %H:%M:%S")
+    end = datetime.strptime(payload.end_datetime, "%Y-%m-%d %H:%M:%S")
+    duration_days = (end - start).total_seconds() / 86400
+    return round(_daily_hire_rate(fixture) * duration_days, 2)
+
+
 @router.post(
     "/{voyage_id}/off-hire-periods", response_model=OffHirePeriodRead, status_code=201
 )
@@ -91,24 +108,14 @@ def create_off_hire_period(
     voyage = db.get(Voyage, voyage_id)
     if voyage is None:
         raise HTTPException(status_code=404, detail="Voyage not found")
-    fixture = db.get(Fixture, voyage.fixture_id)
-    if fixture is None or fixture.fixture_type != "time_charter_out":
-        raise HTTPException(
-            status_code=422,
-            detail="Off-hire periods can only be recorded for a Time Charter Out voyage",
-        )
-
-    start = datetime.strptime(payload.start_datetime, "%Y-%m-%d %H:%M:%S")
-    end = datetime.strptime(payload.end_datetime, "%Y-%m-%d %H:%M:%S")
-    duration_days = (end - start).total_seconds() / 86400
-    calculated_deduction = round(_daily_hire_rate(fixture) * duration_days, 2)
+    fixture = _tc_out_fixture_or_422(voyage, db)
 
     period = OffHirePeriod(
         voyage_id=voyage_id,
         start_datetime=payload.start_datetime,
         end_datetime=payload.end_datetime,
         reason=payload.reason,
-        calculated_deduction=calculated_deduction,
+        calculated_deduction=_calculated_deduction(fixture, payload),
         override_deduction=payload.override_deduction,
     )
     db.add(period)
@@ -120,3 +127,25 @@ def create_off_hire_period(
 @router.get("/{voyage_id}/off-hire-periods", response_model=list[OffHirePeriodRead])
 def list_off_hire_periods(voyage_id: int, db: Session = Depends(get_db)):
     return db.query(OffHirePeriod).filter(OffHirePeriod.voyage_id == voyage_id).all()
+
+
+@router.put("/{voyage_id}/off-hire-periods/{period_id}", response_model=OffHirePeriodRead)
+def update_off_hire_period(
+    voyage_id: int, period_id: int, payload: OffHirePeriodCreate, db: Session = Depends(get_db)
+):
+    voyage = db.get(Voyage, voyage_id)
+    if voyage is None:
+        raise HTTPException(status_code=404, detail="Voyage not found")
+    period = db.get(OffHirePeriod, period_id)
+    if period is None or period.voyage_id != voyage_id:
+        raise HTTPException(status_code=404, detail="Off-hire period not found")
+    fixture = _tc_out_fixture_or_422(voyage, db)
+
+    period.start_datetime = payload.start_datetime
+    period.end_datetime = payload.end_datetime
+    period.reason = payload.reason
+    period.override_deduction = payload.override_deduction
+    period.calculated_deduction = _calculated_deduction(fixture, payload)
+    db.commit()
+    db.refresh(period)
+    return period

@@ -40,6 +40,16 @@ def get_claim(claim_id: int, db: Session = Depends(get_db)):
     return _get_claim_or_404(claim_id, db)
 
 
+@router.put("/{claim_id}", response_model=ClaimRead)
+def update_claim(claim_id: int, payload: ClaimCreate, db: Session = Depends(get_db)):
+    claim = _get_claim_or_404(claim_id, db)
+    for field, value in payload.model_dump().items():
+        setattr(claim, field, value)
+    db.commit()
+    db.refresh(claim)
+    return claim
+
+
 @router.post("/{claim_id}/status", response_model=ClaimRead)
 def update_claim_status(claim_id: int, payload: ClaimStatusUpdate, db: Session = Depends(get_db)):
     claim = _get_claim_or_404(claim_id, db)

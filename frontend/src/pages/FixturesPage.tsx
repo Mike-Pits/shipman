@@ -96,32 +96,34 @@ export default function FixturesPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>{t('fixtures.columnType')}</th>
-              <th>{t('fixtures.columnCharterer')}</th>
-              <th>{t('fixtures.columnCurrency')}</th>
-              <th>{t('fixtures.columnKeyRate')}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {fixtures.map((f) => (
-              <tr key={f.id}>
-                <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
-                <td>{f.charterer}</td>
-                <td>{f.contract_currency}</td>
-                <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
-                <td>
-                  <button type="button" onClick={() => handleEdit(f)}>
-                    {t('common.edit')}
-                  </button>
-                </td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('fixtures.columnType')}</th>
+                <th>{t('fixtures.columnCharterer')}</th>
+                <th>{t('fixtures.columnCurrency')}</th>
+                <th>{t('fixtures.columnKeyRate')}</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {fixtures.map((f) => (
+                <tr key={f.id}>
+                  <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
+                  <td>{f.charterer}</td>
+                  <td>{f.contract_currency}</td>
+                  <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(f)}>
+                      {t('common.edit')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>{editingId !== null ? t('fixtures.editFixture') : t('fixtures.createFixture')}</h2>
@@ -323,7 +325,11 @@ export default function FixturesPage() {
           </button>
         )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

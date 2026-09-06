@@ -156,4 +156,51 @@ describe('OffHirePage', () => {
 
     expect(await screen.findByText(/time charter out voyage/i)).toBeInTheDocument()
   })
+
+  it('lets the operator correct an off-hire period and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedPeriod = {
+      ...SAMPLE_PERIOD,
+      end_datetime: '2026-06-08 00:00:00',
+      reason: 'Main engine breakdown (extended)',
+      duration_days: 3,
+      calculated_deduction: 27000,
+      effective_deduction: 27000,
+    }
+    const fetchMock = mockFetchByUrl({
+      '/voyages/1/off-hire-periods/1': [{ status: 200, body: correctedPeriod }],
+      '/voyages/1/off-hire-periods': [
+        { status: 200, body: [SAMPLE_PERIOD] },
+        { status: 200, body: [correctedPeriod] },
+      ],
+      '/voyages': [{ status: 200, body: [VOYAGE] }],
+    })
+
+    render(<OffHirePage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByLabelText(/voyage/i), '1')
+    await screen.findByText('Main engine breakdown')
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const endInput = screen.getByLabelText(/^end/i)
+    await user.clear(endInput)
+    await user.type(endInput, '2026-06-08 00:00:00')
+    const reasonInput = screen.getByLabelText(/reason/i)
+    await user.clear(reasonInput)
+    await user.type(reasonInput, 'Main engine breakdown (extended)')
+    await user.click(screen.getByRole('button', { name: /update off-hire/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/voyages/1/off-hire-periods/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body).toMatchObject({ end_datetime: '2026-06-08 00:00:00', reason: 'Main engine breakdown (extended)' })
+
+    await waitFor(() => expect(screen.getAllByText('27000').length).toBeGreaterThan(0))
+  })
 })

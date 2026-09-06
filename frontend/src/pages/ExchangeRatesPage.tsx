@@ -105,7 +105,11 @@ export default function ExchangeRatesPage() {
         </form>
       )}
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

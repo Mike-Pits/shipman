@@ -142,3 +142,133 @@ def test_operator_can_list_and_retrieve_payments(client):
     get_response = client.get(f"/payments/{created['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["cost_type_name"] == "Bunkers"
+
+
+def test_operator_can_correct_a_payments_amount_and_it_recomputes_the_rub_equivalent(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Port Charges",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+
+    response = client.put(
+        f"/payments/{created['id']}",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Port Charges (corrected)",
+            "original_currency": "RUB",
+            "original_amount": 55000,
+            "invoice_date": "2026-06-01",
+            "status": created["status"],
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["cost_type_name"] == "Port Charges (corrected)"
+    assert updated["original_amount"] == 55000
+    assert updated["rub_equivalent"] == 55000
+
+
+def test_correcting_a_payments_currency_recomputes_using_the_historical_rate(client):
+    vessel_id = _create_vessel(client)
+    _set_rate(client, "2026-06-01", 80.0)
+    created = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Port Charges",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+
+    response = client.put(
+        f"/payments/{created['id']}",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Port Charges",
+            "original_currency": "USD",
+            "original_amount": 625,
+            "invoice_date": "2026-06-01",
+            "status": created["status"],
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["rub_equivalent"] == 50000.0
+    assert updated["exchange_rate_used"] == 80.0
+
+
+def test_correcting_a_payment_preserves_its_status(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Bunkers",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+    client.post(f"/payments/{created['id']}/status", json={"status": "paid"})
+
+    response = client.put(
+        f"/payments/{created['id']}",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Bunkers (corrected)",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+            "status": "paid",
+        },
+    )
+
+    assert response.status_code == 200
+    assert response.json()["status"] == "paid"
+
+
+def test_correcting_a_payment_for_an_unknown_vessel_is_rejected(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Bunkers",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+
+    response = client.put(
+        f"/payments/{created['id']}",
+        json={
+            "vessel_id": 999999,
+            "cost_category": "expense",
+            "cost_type_name": "Bunkers",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+            "status": "draft",
+        },
+    )
+
+    assert response.status_code == 404

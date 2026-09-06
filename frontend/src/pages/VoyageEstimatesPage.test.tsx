@@ -205,4 +205,38 @@ describe('VoyageEstimatesPage', () => {
 
     expect(await screen.findByText(/vetting status is expired or failed/i)).toBeInTheDocument()
   })
+
+  it('lets the operator correct an estimate and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedEstimate = { ...SAMPLE_ESTIMATE, estimated_rate: 35, estimated_revenue: 175000, estimated_net_result: 45000 }
+    const fetchMock = mockFetchByUrl({
+      '/voyage-estimates': [
+        { status: 200, body: [SAMPLE_ESTIMATE] },
+        { status: 200, body: correctedEstimate },
+        { status: 200, body: [correctedEstimate] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await screen.findByText('Ust-Luga')
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const rateInput = screen.getByLabelText(/^rate$/i)
+    await user.clear(rateInput)
+    await user.type(rateInput, '35')
+    await user.click(screen.getByRole('button', { name: /update estimate/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/voyage-estimates/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body.estimated_rate).toBe(35)
+
+    expect(await screen.findByText('45000')).toBeInTheDocument()
+  })
 })

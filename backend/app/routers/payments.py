@@ -42,6 +42,28 @@ def list_payments(db: Session = Depends(get_db)):
     return db.query(Payment).all()
 
 
+@router.put("/{payment_id}", response_model=PaymentRead)
+def update_payment(payment_id: int, payload: PaymentCreate, db: Session = Depends(get_db)):
+    payment = db.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+    if db.get(Vessel, payload.vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    rub_equivalent, rate_used, rate_date = convert_to_rub(
+        db, payload.original_currency, payload.original_amount, payload.invoice_date
+    )
+
+    for field, value in payload.model_dump().items():
+        setattr(payment, field, value)
+    payment.rub_equivalent = rub_equivalent
+    payment.exchange_rate_used = rate_used
+    payment.exchange_rate_date = rate_date
+    db.commit()
+    db.refresh(payment)
+    return payment
+
+
 @router.post("/{payment_id}/status", response_model=PaymentRead)
 def update_payment_status(
     payment_id: int, payload: PaymentStatusUpdate, db: Session = Depends(get_db)

@@ -64,7 +64,11 @@ export default function VoyageReportsPage() {
 
       {voyageId === '' && <p>{t('voyageReports.selectVoyagePrompt')}</p>}
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
 
       {pnl && (
         <section>

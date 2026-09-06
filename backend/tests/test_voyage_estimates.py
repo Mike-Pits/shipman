@@ -87,3 +87,40 @@ def test_operator_can_list_and_retrieve_voyage_estimates(client):
     get_response = client.get(f"/voyage-estimates/{created['id']}")
     assert get_response.status_code == 200
     assert get_response.json()["load_port"] == "Ust-Luga"
+
+
+def test_operator_can_correct_an_estimate_and_its_computed_figures_update(client):
+    created = client.post("/voyage-estimates", json=estimate_payload()).json()
+
+    response = client.put(
+        f"/voyage-estimates/{created['id']}",
+        json=estimate_payload(estimated_rate=35),
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["estimated_rate"] == 35
+    # revenue = 35*5000 = 175000; costs = 130000; net = 45000
+    assert updated["estimated_revenue"] == 175000
+    assert updated["estimated_net_result"] == 45000
+
+
+def test_correcting_an_estimate_preserves_its_status_and_fixture_link(client):
+    created = client.post("/voyage-estimates", json=estimate_payload()).json()
+    client.post(f"/voyage-estimates/{created['id']}/status", json={"status": "under_negotiation"})
+
+    response = client.put(
+        f"/voyage-estimates/{created['id']}",
+        json=estimate_payload(estimated_rate=32),
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["status"] == "under_negotiation"
+    assert updated["fixture_id"] is None
+
+
+def test_correcting_an_unknown_estimate_returns_404(client):
+    response = client.put("/voyage-estimates/999999", json=estimate_payload())
+
+    assert response.status_code == 404

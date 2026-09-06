@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createOffHirePeriod, listOffHirePeriods } from '../api/offHirePeriods'
+import { createOffHirePeriod, listOffHirePeriods, updateOffHirePeriod } from '../api/offHirePeriods'
 import { listVoyages } from '../api/voyages'
 import type { OffHirePeriod, OffHirePeriodCreate, Voyage } from '../api/types'
 
@@ -20,6 +20,7 @@ export default function OffHirePage() {
   const [form, setForm] = useState<OffHirePeriodCreate>(EMPTY_FORM)
   const [overrideText, setOverrideText] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
     listVoyages()
@@ -33,6 +34,7 @@ export default function OffHirePage() {
     setPeriods([])
     setForm(EMPTY_FORM)
     setOverrideText('')
+    setEditingId(null)
     setError(null)
     if (id === '') return
     setPeriods(await listOffHirePeriods(id))
@@ -42,17 +44,39 @@ export default function OffHirePage() {
     (key: 'start_datetime' | 'end_datetime' | 'reason') => (e: React.ChangeEvent<HTMLInputElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const handleEdit = (period: OffHirePeriod) => {
+    setError(null)
+    setEditingId(period.id)
+    setForm({
+      start_datetime: period.start_datetime,
+      end_datetime: period.end_datetime,
+      reason: period.reason,
+      override_deduction: period.override_deduction,
+    })
+    setOverrideText(period.override_deduction != null ? String(period.override_deduction) : '')
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setOverrideText('')
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (voyageId === '') return
     setError(null)
     try {
-      await createOffHirePeriod(voyageId, {
+      const payload = {
         ...form,
         override_deduction: overrideText.trim() === '' ? null : Number(overrideText),
-      })
-      setForm(EMPTY_FORM)
-      setOverrideText('')
+      }
+      if (editingId !== null) {
+        await updateOffHirePeriod(voyageId, editingId, payload)
+      } else {
+        await createOffHirePeriod(voyageId, payload)
+      }
+      handleCancelEdit()
       setPeriods(await listOffHirePeriods(voyageId))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record off-hire period')
@@ -79,12 +103,17 @@ export default function OffHirePage() {
         </label>
       )}
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
 
       {voyageId !== '' && (
         <>
           <section>
             <h2>{t('offHire.historyHeading')}</h2>
+            <div className="table-scroll">
             <table>
               <thead>
                 <tr>
@@ -95,6 +124,7 @@ export default function OffHirePage() {
                   <th>{t('offHire.columnCalculatedDeduction')}</th>
                   <th>{t('offHire.columnOverrideDeduction')}</th>
                   <th>{t('offHire.columnEffectiveDeduction')}</th>
+                  <th></th>
                 </tr>
               </thead>
               <tbody>
@@ -107,14 +137,21 @@ export default function OffHirePage() {
                     <td>{p.calculated_deduction}</td>
                     <td>{p.override_deduction ?? ''}</td>
                     <td>{p.effective_deduction}</td>
+                    <td>
+                      <button type="button" onClick={() => handleEdit(p)}>
+                        {t('common.edit')}
+                      </button>
+                    </td>
                   </tr>
                 ))}
               </tbody>
             </table>
+            </div>
           </section>
 
           <section>
-            <h2>{t('offHire.createHeading')}</h2>
+            <h2>{editingId !== null ? t('offHire.editHeading') : t('offHire.createHeading')}</h2>
+            {editingId !== null && <p role="alert">{t('offHire.editWarning')}</p>}
             <form onSubmit={handleSubmit}>
               <label>
                 {t('offHire.startDatetime')}
@@ -147,7 +184,12 @@ export default function OffHirePage() {
                   onChange={(e) => setOverrideText(e.target.value)}
                 />
               </label>
-              <button type="submit">{t('offHire.createButton')}</button>
+              <button type="submit">{editingId !== null ? t('offHire.updateButton') : t('offHire.createButton')}</button>
+              {editingId !== null && (
+                <button type="button" onClick={handleCancelEdit}>
+                  {t('common.cancel')}
+                </button>
+              )}
             </form>
           </section>
         </>

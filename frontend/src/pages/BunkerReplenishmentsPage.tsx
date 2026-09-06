@@ -1,6 +1,10 @@
 import { Fragment, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createBunkerReplenishment, listBunkerReplenishments } from '../api/bunkerReplenishments'
+import {
+  createBunkerReplenishment,
+  listBunkerReplenishments,
+  updateBunkerReplenishment,
+} from '../api/bunkerReplenishments'
 import { listVessels } from '../api/vessels'
 import type { BunkerReplenishment, BunkerReplenishmentCreate, Vessel } from '../api/types'
 
@@ -28,6 +32,7 @@ export default function BunkerReplenishmentsPage() {
   const [lines, setLines] = useState<LineRow[]>(EMPTY_LINES)
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listBunkerReplenishments().then(setReplenishments)
 
@@ -45,6 +50,33 @@ export default function BunkerReplenishmentsPage() {
   const lineField = (grade: string, key: 'quantity' | 'price') => (e: React.ChangeEvent<HTMLInputElement>) =>
     setLines((rows) => rows.map((row) => (row.grade === grade ? { ...row, [key]: e.target.value } : row)))
 
+  const handleEdit = (r: BunkerReplenishment) => {
+    setError(null)
+    setEditingId(r.id)
+    setForm({
+      vessel_id: r.vessel_id,
+      replenishment_datetime: r.replenishment_datetime,
+      port: r.port,
+      supplier: r.supplier,
+      invoice_number: r.invoice_number,
+      currency: r.currency,
+    })
+    setLines(
+      EMPTY_LINES.map((row) => {
+        const existing = r.lines.find((line) => line.fuel_grade === row.grade)
+        return existing
+          ? { ...row, quantity: String(existing.quantity_mt), price: String(existing.price_per_mt) }
+          : row
+      }),
+    )
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+    setLines(EMPTY_LINES)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -59,9 +91,12 @@ export default function BunkerReplenishmentsPage() {
             price_per_mt: Number(row.price) || 0,
           })),
       }
-      await createBunkerReplenishment(payload)
-      setForm(EMPTY_FORM)
-      setLines(EMPTY_LINES)
+      if (editingId !== null) {
+        await updateBunkerReplenishment(editingId, payload)
+      } else {
+        await createBunkerReplenishment(payload)
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record replenishment')
@@ -75,6 +110,7 @@ export default function BunkerReplenishmentsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -100,6 +136,9 @@ export default function BunkerReplenishmentsPage() {
                   <td>
                     <button type="button" onClick={() => setExpandedId(expandedId === r.id ? null : r.id)}>
                       {expandedId === r.id ? t('bunkers.hideLines') : t('bunkers.viewLines')}
+                    </button>
+                    <button type="button" onClick={() => handleEdit(r)}>
+                      {t('common.edit')}
                     </button>
                   </td>
                 </tr>
@@ -133,9 +172,11 @@ export default function BunkerReplenishmentsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <h2>{t('bunkers.createHeading')}</h2>
+      <h2>{editingId !== null ? t('bunkers.editHeading') : t('bunkers.createHeading')}</h2>
+      {editingId !== null && <p role="alert">{t('bunkers.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
           {t('bunkers.vesselContext')}
@@ -190,9 +231,18 @@ export default function BunkerReplenishmentsPage() {
           </div>
         ))}
 
-        <button type="submit">{t('bunkers.createButton')}</button>
+        <button type="submit">{editingId !== null ? t('bunkers.updateButton') : t('bunkers.createButton')}</button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

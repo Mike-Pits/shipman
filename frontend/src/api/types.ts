@@ -357,3 +357,52 @@ export interface Claim extends ClaimCreate {
   date_resolved: string | null
   settled_payment_id: number | null
 }
+
+export interface FleetPnl {
+  start_date: string
+  end_date: string
+  revenue: number
+  costs: number
+  net_result: number
+  voyage_count: number
+  currency: string
+}
+
+export interface DaReconciliationRow {
+  id: number
+  voyage_id: number
+  port: string
+  status: DisbursementAccountStatus
+  pda_amount: number
+  fda_total: number
+  variance: number
+}
+
+export interface FleetVettingStatusRow {
+  vessel_id: number
+  vessel_name: string
+  status: VettingStatus | null
+  expiry_date: string | null
+}
+
+export interface ClaimsStatusRow {
+  id: number
+  voyage_id: number | null
+  claim_type: ClaimType
+  counterparty: string
+  amount_claimed: number
+  currency: string
+  status: ClaimStatus
+  age_days: number
+}
+
+export interface AuditLogEntry {
+  id: number
+  table_name: string
+  record_id: number | null
+  action: string
+  old_values: string | null
+  new_values: string | null
+  user: string
+  timestamp: string
+}

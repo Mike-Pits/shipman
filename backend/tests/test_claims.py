@@ -179,3 +179,90 @@ def test_operator_can_list_and_filter_claims_by_status(client):
 
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+def test_operator_can_correct_a_claims_fields(client):
+    voyage_id, fixture_id, _ = _create_voyage(client)
+    created = client.post(
+        "/claims",
+        json={
+            "voyage_id": voyage_id,
+            "fixture_id": fixture_id,
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd",
+            "amount_claimed": 15000,
+            "currency": "USD",
+            "date_raised": "2026-06-15",
+            "notes": "Shortlanded 50 MT per draft survey",
+        },
+    ).json()
+
+    response = client.put(
+        f"/claims/{created['id']}",
+        json={
+            "voyage_id": voyage_id,
+            "fixture_id": fixture_id,
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd",
+            "amount_claimed": 17500,
+            "currency": "USD",
+            "date_raised": "2026-06-16",
+            "notes": "Corrected after re-survey: shortlanded 58 MT",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["amount_claimed"] == 17500
+    assert updated["date_raised"] == "2026-06-16"
+    assert updated["notes"] == "Corrected after re-survey: shortlanded 58 MT"
+
+
+def test_correcting_a_claim_preserves_its_status_and_settlement_fields(client):
+    voyage_id, fixture_id, _ = _create_voyage(client)
+    created = client.post(
+        "/claims",
+        json={
+            "voyage_id": voyage_id,
+            "fixture_id": fixture_id,
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd",
+            "amount_claimed": 15000,
+            "currency": "USD",
+            "date_raised": "2026-06-15",
+        },
+    ).json()
+    client.post(f"/claims/{created['id']}/status", json={"status": "negotiating"})
+
+    response = client.put(
+        f"/claims/{created['id']}",
+        json={
+            "voyage_id": voyage_id,
+            "fixture_id": fixture_id,
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd (corrected)",
+            "amount_claimed": 15000,
+            "currency": "USD",
+            "date_raised": "2026-06-15",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["status"] == "negotiating"
+    assert updated["counterparty"] == "Rotterdam Terminal Ltd (corrected)"
+
+
+def test_correcting_an_unknown_claim_returns_404(client):
+    response = client.put(
+        "/claims/999999",
+        json={
+            "claim_type": "other",
+            "counterparty": "Test Charterer",
+            "amount_claimed": 1000,
+            "currency": "USD",
+            "date_raised": "2026-06-15",
+        },
+    )
+
+    assert response.status_code == 404

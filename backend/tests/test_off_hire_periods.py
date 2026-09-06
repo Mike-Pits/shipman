@@ -1,8 +1,8 @@
 from tests.test_vessels import vessel_payload
 
 
-def _create_tc_out_voyage(client):
-    vessel_id = client.post("/vessels", json=vessel_payload()).json()["id"]
+def _create_tc_out_voyage(client, imo_number="9123456"):
+    vessel_id = client.post("/vessels", json=vessel_payload(imo_number=imo_number)).json()["id"]
     fixture_id = client.post(
         "/fixtures",
         json={
@@ -132,3 +132,105 @@ def test_operator_can_list_off_hire_periods_for_a_voyage(client):
 
     assert response.status_code == 200
     assert len(response.json()) == 1
+
+
+def test_operator_can_correct_an_off_hire_period_and_the_deduction_recomputes(client):
+    voyage_id = _create_tc_out_voyage(client)
+    created = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    ).json()
+
+    response = client.put(
+        f"/voyages/{voyage_id}/off-hire-periods/{created['id']}",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-08 00:00:00",
+            "reason": "Main engine breakdown (extended)",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["duration_days"] == 3
+    assert updated["calculated_deduction"] == 27000
+    assert updated["effective_deduction"] == 27000
+    assert updated["reason"] == "Main engine breakdown (extended)"
+
+
+def test_operator_can_correct_the_override_deduction_on_an_off_hire_period(client):
+    voyage_id = _create_tc_out_voyage(client)
+    created = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    ).json()
+
+    response = client.put(
+        f"/voyages/{voyage_id}/off-hire-periods/{created['id']}",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+            "override_deduction": 15000,
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["calculated_deduction"] == 18000
+    assert updated["effective_deduction"] == 15000
+
+
+def test_correcting_an_off_hire_period_for_an_unknown_voyage_returns_404(client):
+    voyage_id = _create_tc_out_voyage(client)
+    created = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    ).json()
+
+    response = client.put(
+        f"/voyages/999999/off-hire-periods/{created['id']}",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_correcting_an_off_hire_period_that_does_not_belong_to_the_voyage_returns_404(client):
+    voyage_a = _create_tc_out_voyage(client, imo_number="9111111")
+    voyage_b = _create_tc_out_voyage(client, imo_number="9222222")
+    created = client.post(
+        f"/voyages/{voyage_a}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    ).json()
+
+    response = client.put(
+        f"/voyages/{voyage_b}/off-hire-periods/{created['id']}",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    )
+
+    assert response.status_code == 404

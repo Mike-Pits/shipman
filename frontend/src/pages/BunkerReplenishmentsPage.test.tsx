@@ -133,4 +133,43 @@ describe('BunkerReplenishmentsPage', () => {
     expect(screen.getByText('110000')).toBeInTheDocument()
     expect(screen.getByText('24000')).toBeInTheDocument()
   })
+
+  it('lets the operator edit a replenishment and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedReplenishment = {
+      ...SAMPLE_REPLENISHMENT,
+      supplier: 'Corrected Supplier Ltd',
+      lines: [{ id: 1, fuel_grade: 'IFO', quantity_mt: 180, price_per_mt: 540, total_cost: 97200 }],
+      total_cost: 97200,
+    }
+    const fetchMock = mockFetchByUrl({
+      '/bunker-replenishments': [
+        { status: 200, body: [SAMPLE_REPLENISHMENT] },
+        { status: 200, body: correctedReplenishment },
+        { status: 200, body: [correctedReplenishment] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+    })
+
+    render(<BunkerReplenishmentsPage />)
+    await screen.findByText('Ust-Luga')
+
+    await user.click(screen.getByRole('button', { name: /edit/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/editing.*existing/i)
+    const supplierInput = screen.getByLabelText(/supplier/i)
+    await user.clear(supplierInput)
+    await user.type(supplierInput, 'Corrected Supplier Ltd')
+    await user.click(screen.getByRole('button', { name: /update replenishment/i }))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'PUT')).toBe(true),
+    )
+    const putCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+    expect(putCall?.[0]).toContain('/bunker-replenishments/1')
+    const body = JSON.parse(putCall![1].body as string)
+    expect(body.supplier).toBe('Corrected Supplier Ltd')
+
+    expect(await screen.findByText('Corrected Supplier Ltd')).toBeInTheDocument()
+  })
 })

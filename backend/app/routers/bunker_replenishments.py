@@ -35,3 +35,21 @@ def get_bunker_replenishment(replenishment_id: int, db: Session = Depends(get_db
     if replenishment is None:
         raise HTTPException(status_code=404, detail="Bunker replenishment not found")
     return replenishment
+
+
+@router.put("/{replenishment_id}", response_model=BunkerReplenishmentRead)
+def update_bunker_replenishment(
+    replenishment_id: int, payload: BunkerReplenishmentCreate, db: Session = Depends(get_db)
+):
+    replenishment = db.get(BunkerReplenishment, replenishment_id)
+    if replenishment is None:
+        raise HTTPException(status_code=404, detail="Bunker replenishment not found")
+    if db.get(Vessel, payload.vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+
+    for field, value in payload.model_dump(exclude={"lines"}).items():
+        setattr(replenishment, field, value)
+    replenishment.lines = [BunkerReplenishmentLine(**line.model_dump()) for line in payload.lines]
+    db.commit()
+    db.refresh(replenishment)
+    return replenishment

@@ -6,9 +6,12 @@ import {
   disputeDisbursementAccount,
   listDisbursementAccounts,
   reconcileDisbursementAccount,
+  updateDisbursementAccount,
+  updateFdaLine,
 } from '../api/disbursementAccounts'
 import { listVoyages } from '../api/voyages'
-import type { DisbursementAccount, DisbursementAccountCreate, Voyage } from '../api/types'
+import Badge, { type BadgeTone } from '../components/ui/Badge'
+import type { DisbursementAccount, DisbursementAccountCreate, DisbursementAccountLineRead, Voyage } from '../api/types'
 
 const EMPTY_FORM: DisbursementAccountCreate = {
   voyage_id: 0,
@@ -25,6 +28,13 @@ const STATUS_KEYS: Record<DisbursementAccount['status'], string> = {
   fda_pending: 'disbursementAccounts.statusFdaPending',
   reconciled: 'disbursementAccounts.statusReconciled',
   disputed: 'disbursementAccounts.statusDisputed',
+}
+
+const STATUS_TONES: Record<DisbursementAccount['status'], BadgeTone> = {
+  pda_only: 'neutral',
+  fda_pending: 'info',
+  reconciled: 'success',
+  disputed: 'danger',
 }
 
 const LINE_TYPE_KEYS: Record<string, string> = {
@@ -47,6 +57,9 @@ export default function DisbursementAccountsPage() {
   const [expandedId, setExpandedId] = useState<number | null>(null)
   const [lineForms, setLineForms] = useState<Record<number, typeof EMPTY_LINE_FORM>>({})
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
+  const [editingLine, setEditingLine] = useState<{ daId: number; lineId: number } | null>(null)
+  const [editLineForm, setEditLineForm] = useState(EMPTY_LINE_FORM)
 
   const refresh = () => listDisbursementAccounts().then(setDas)
 
@@ -62,15 +75,64 @@ export default function DisbursementAccountsPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
 
+  const handleEdit = (da: DisbursementAccount) => {
+    setError(null)
+    setEditingId(da.id)
+    setForm({ voyage_id: da.voyage_id, port: da.port, pda_amount: da.pda_amount, pda_currency: da.pda_currency, pda_date: da.pda_date })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
-      await createDisbursementAccount(form)
-      setForm(EMPTY_FORM)
+      if (editingId !== null) {
+        await updateDisbursementAccount(editingId, form)
+      } else {
+        await createDisbursementAccount(form)
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record PDA')
+    }
+  }
+
+  const handleStartEditLine = (da: DisbursementAccount, line: DisbursementAccountLineRead) => {
+    setError(null)
+    setEditingLine({ daId: da.id, lineId: line.id })
+    setEditLineForm({
+      line_type: line.line_type,
+      description: line.description,
+      amount: String(line.amount),
+      currency: line.currency,
+    })
+  }
+
+  const handleCancelEditLine = () => {
+    setEditingLine(null)
+    setEditLineForm(EMPTY_LINE_FORM)
+  }
+
+  const handleSaveLine = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (editingLine === null) return
+    setError(null)
+    try {
+      await updateFdaLine(editingLine.daId, editingLine.lineId, {
+        line_type: editLineForm.line_type,
+        description: editLineForm.description,
+        amount: Number(editLineForm.amount) || 0,
+        currency: editLineForm.currency,
+      })
+      handleCancelEditLine()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to update FDA line')
     }
   }
 
@@ -121,6 +183,7 @@ export default function DisbursementAccountsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -139,13 +202,18 @@ export default function DisbursementAccountsPage() {
                 <tr>
                   <td>{voyageNumber(da.voyage_id)}</td>
                   <td>{da.port}</td>
-                  <td>{t(STATUS_KEYS[da.status])}</td>
+                  <td>
+                    <Badge tone={STATUS_TONES[da.status]}>{t(STATUS_KEYS[da.status])}</Badge>
+                  </td>
                   <td>{da.pda_amount}</td>
                   <td>{da.fda_total}</td>
                   <td>{da.variance}</td>
                   <td>
                     <button type="button" onClick={() => setExpandedId(expandedId === da.id ? null : da.id)}>
                       {expandedId === da.id ? t('disbursementAccounts.hideLines') : t('disbursementAccounts.viewLines')}
+                    </button>
+                    <button type="button" onClick={() => handleEdit(da)}>
+                      {t('common.edit')}
                     </button>
                     {da.lines.length > 0 && da.status !== 'reconciled' && (
                       <button type="button" onClick={() => handleReconcile(da)}>
@@ -169,17 +237,75 @@ export default function DisbursementAccountsPage() {
                             <th>{t('disbursementAccounts.lineColumnDescription')}</th>
                             <th>{t('disbursementAccounts.lineColumnAmount')}</th>
                             <th>{t('disbursementAccounts.lineColumnCurrency')}</th>
+                            <th></th>
                           </tr>
                         </thead>
                         <tbody>
-                          {da.lines.map((line) => (
-                            <tr key={line.id}>
-                              <td>{t(LINE_TYPE_KEYS[line.line_type] ?? line.line_type)}</td>
-                              <td>{line.description}</td>
-                              <td>{line.amount}</td>
-                              <td>{line.currency}</td>
-                            </tr>
-                          ))}
+                          {da.lines.map((line) =>
+                            editingLine?.daId === da.id && editingLine.lineId === line.id ? (
+                              <tr key={line.id}>
+                                <td colSpan={5}>
+                                  <form onSubmit={handleSaveLine}>
+                                    <label>
+                                      {t('disbursementAccounts.lineType')}
+                                      <select
+                                        value={editLineForm.line_type}
+                                        onChange={(e) => setEditLineForm((f) => ({ ...f, line_type: e.target.value }))}
+                                      >
+                                        {Object.entries(LINE_TYPE_KEYS).map(([value, key]) => (
+                                          <option key={value} value={value}>
+                                            {t(key)}
+                                          </option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label>
+                                      {t('disbursementAccounts.description')}
+                                      <input
+                                        value={editLineForm.description}
+                                        onChange={(e) => setEditLineForm((f) => ({ ...f, description: e.target.value }))}
+                                        required
+                                      />
+                                    </label>
+                                    <label>
+                                      {t('disbursementAccounts.amount')}
+                                      <input
+                                        type="number"
+                                        step="0.01"
+                                        value={editLineForm.amount}
+                                        onChange={(e) => setEditLineForm((f) => ({ ...f, amount: e.target.value }))}
+                                        required
+                                      />
+                                    </label>
+                                    <label>
+                                      {t('disbursementAccounts.currency')}
+                                      <input
+                                        value={editLineForm.currency}
+                                        onChange={(e) => setEditLineForm((f) => ({ ...f, currency: e.target.value }))}
+                                        required
+                                      />
+                                    </label>
+                                    <button type="submit">{t('disbursementAccounts.saveLineButton')}</button>
+                                    <button type="button" onClick={handleCancelEditLine}>
+                                      {t('common.cancel')}
+                                    </button>
+                                  </form>
+                                </td>
+                              </tr>
+                            ) : (
+                              <tr key={line.id}>
+                                <td>{t(LINE_TYPE_KEYS[line.line_type] ?? line.line_type)}</td>
+                                <td>{line.description}</td>
+                                <td>{line.amount}</td>
+                                <td>{line.currency}</td>
+                                <td>
+                                  <button type="button" onClick={() => handleStartEditLine(da, line)}>
+                                    {t('disbursementAccounts.editLineButton')}
+                                  </button>
+                                </td>
+                              </tr>
+                            ),
+                          )}
                         </tbody>
                       </table>
                     </td>
@@ -244,9 +370,11 @@ export default function DisbursementAccountsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <h2>{t('disbursementAccounts.createHeading')}</h2>
+      <h2>{editingId !== null ? t('disbursementAccounts.editHeading') : t('disbursementAccounts.createHeading')}</h2>
+      {editingId !== null && <p role="alert">{t('disbursementAccounts.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
           {t('disbursementAccounts.voyage')}
@@ -277,9 +405,20 @@ export default function DisbursementAccountsPage() {
           {t('disbursementAccounts.pdaDate')}
           <input value={form.pda_date} onChange={field('pda_date')} placeholder="YYYY-MM-DD" required />
         </label>
-        <button type="submit">{t('disbursementAccounts.createButton')}</button>
+        <button type="submit">
+          {editingId !== null ? t('disbursementAccounts.updateButton') : t('disbursementAccounts.createButton')}
+        </button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

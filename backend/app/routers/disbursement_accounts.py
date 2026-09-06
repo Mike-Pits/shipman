@@ -6,6 +6,7 @@ from app.models.disbursement_account import DisbursementAccount, DisbursementAcc
 from app.models.voyage import Voyage
 from app.schemas.disbursement_account import (
     DisbursementAccountCreate,
+    DisbursementAccountLineCreate,
     DisbursementAccountRead,
     FdaLinesCreate,
 )
@@ -42,6 +43,37 @@ def _get_da_or_404(da_id: int, db: Session) -> DisbursementAccount:
     da = db.get(DisbursementAccount, da_id)
     if da is None:
         raise HTTPException(status_code=404, detail="Disbursement account not found")
+    return da
+
+
+@router.put("/{da_id}", response_model=DisbursementAccountRead)
+def update_disbursement_account(
+    da_id: int, payload: DisbursementAccountCreate, db: Session = Depends(get_db)
+):
+    da = _get_da_or_404(da_id, db)
+    if db.get(Voyage, payload.voyage_id) is None:
+        raise HTTPException(status_code=404, detail="Voyage not found")
+
+    for field, value in payload.model_dump().items():
+        setattr(da, field, value)
+    db.commit()
+    db.refresh(da)
+    return da
+
+
+@router.put("/{da_id}/fda-lines/{line_id}", response_model=DisbursementAccountRead)
+def update_fda_line(
+    da_id: int, line_id: int, payload: DisbursementAccountLineCreate, db: Session = Depends(get_db)
+):
+    da = _get_da_or_404(da_id, db)
+    line = next((line for line in da.lines if line.id == line_id), None)
+    if line is None:
+        raise HTTPException(status_code=404, detail="FDA line not found")
+
+    for field, value in payload.model_dump().items():
+        setattr(line, field, value)
+    db.commit()
+    db.refresh(da)
     return da
 
 

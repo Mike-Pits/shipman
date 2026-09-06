@@ -177,4 +177,39 @@ describe('ClaimsPage', () => {
     expect(body).toMatchObject({ amount_settled: 12000 })
     expect(await screen.findByText(/^settled$/i)).toBeInTheDocument()
   })
+
+  it('lets the operator correct a claim and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedClaim = { ...SAMPLE_CLAIM, amount_claimed: 17500, notes: 'Corrected after re-survey' }
+    const fetchMock = mockFetchByUrl({
+      '/claims': [
+        { status: 200, body: [SAMPLE_CLAIM] },
+        { status: 200, body: correctedClaim },
+        { status: 200, body: [correctedClaim] },
+      ],
+      '/voyages': [{ status: 200, body: [VOYAGE] }],
+    })
+
+    render(<ClaimsPage />)
+    await screen.findByText('Rotterdam Terminal Ltd')
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/editing.*existing/i)
+    const amountInput = screen.getByLabelText(/amount claimed/i)
+    await user.clear(amountInput)
+    await user.type(amountInput, '17500')
+    await user.click(screen.getByRole('button', { name: /update claim/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/claims/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body).toMatchObject({ amount_claimed: 17500 })
+
+    expect(await screen.findByText(/17500/)).toBeInTheDocument()
+  })
 })

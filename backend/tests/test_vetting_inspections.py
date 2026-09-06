@@ -91,3 +91,93 @@ def test_vessel_with_no_inspections_has_no_status(client):
 
     assert response.status_code == 200
     assert response.json()["status"] is None
+
+
+def test_operator_can_correct_an_inspection_and_it_is_reflected_in_history_and_status(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        f"/vessels/{vessel_id}/vetting-inspections",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "approved",
+            "observations": "No major findings",
+        },
+    ).json()
+
+    response = client.put(
+        f"/vessels/{vessel_id}/vetting-inspections/{created['id']}",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "failed",
+            "observations": "Corrected: 2 findings identified after review",
+        },
+    )
+
+    assert response.status_code == 200
+    updated = response.json()
+    assert updated["status"] == "failed"
+    assert updated["observations"] == "Corrected: 2 findings identified after review"
+
+    status_response = client.get(f"/vessels/{vessel_id}/vetting-status")
+    assert status_response.json()["status"] == "failed"
+
+
+def test_correcting_an_inspection_for_an_unknown_vessel_returns_404(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        f"/vessels/{vessel_id}/vetting-inspections",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "approved",
+        },
+    ).json()
+
+    response = client.put(
+        f"/vessels/999999/vetting-inspections/{created['id']}",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "approved",
+        },
+    )
+
+    assert response.status_code == 404
+
+
+def test_correcting_an_inspection_that_does_not_belong_to_the_vessel_returns_404(client):
+    vessel_a = client.post("/vessels", json=vessel_payload(imo_number="9111111")).json()["id"]
+    vessel_b = client.post("/vessels", json=vessel_payload(imo_number="9222222")).json()["id"]
+    created = client.post(
+        f"/vessels/{vessel_a}/vetting-inspections",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "approved",
+        },
+    ).json()
+
+    response = client.put(
+        f"/vessels/{vessel_b}/vetting-inspections/{created['id']}",
+        json={
+            "inspection_date": "2026-01-15",
+            "inspecting_body": "Shell SIRE",
+            "inspection_type": "SIRE",
+            "expiry_date": _next_month(),
+            "status": "approved",
+        },
+    )
+
+    assert response.status_code == 404

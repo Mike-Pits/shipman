@@ -1,7 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createVettingInspection, getVettingStatus, listVettingInspections } from '../api/vettingInspections'
+import {
+  createVettingInspection,
+  getVettingStatus,
+  listVettingInspections,
+  updateVettingInspection,
+} from '../api/vettingInspections'
 import { listVessels } from '../api/vessels'
+import Badge, { type BadgeTone } from '../components/ui/Badge'
 import type { Vessel, VettingInspection, VettingInspectionCreate, VettingStatus, VettingStatusRead } from '../api/types'
 
 const EMPTY_FORM: VettingInspectionCreate = {
@@ -20,6 +26,13 @@ const STATUS_KEYS: Record<VettingStatus, string> = {
   failed: 'vetting.statusFailed',
 }
 
+const STATUS_TONES: Record<VettingStatus, BadgeTone> = {
+  approved: 'success',
+  pending: 'neutral',
+  expired: 'danger',
+  failed: 'danger',
+}
+
 export default function VettingInspectionsPage() {
   const { t } = useTranslation()
   const [vessels, setVessels] = useState<Vessel[]>([])
@@ -29,6 +42,7 @@ export default function VettingInspectionsPage() {
   const [inspections, setInspections] = useState<VettingInspection[]>([])
   const [form, setForm] = useState<VettingInspectionCreate>(EMPTY_FORM)
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   useEffect(() => {
     listVessels()
@@ -42,6 +56,7 @@ export default function VettingInspectionsPage() {
     setStatus(null)
     setInspections([])
     setForm(EMPTY_FORM)
+    setEditingId(null)
     setError(null)
     if (id === '') return
     setStatus(await getVettingStatus(id))
@@ -53,13 +68,35 @@ export default function VettingInspectionsPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: e.target.value }))
 
+  const handleEdit = (insp: VettingInspection) => {
+    setError(null)
+    setEditingId(insp.id)
+    setForm({
+      inspection_date: insp.inspection_date,
+      inspecting_body: insp.inspecting_body,
+      inspection_type: insp.inspection_type,
+      expiry_date: insp.expiry_date,
+      status: insp.status,
+      observations: insp.observations,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     if (vesselId === '') return
     setError(null)
     try {
-      await createVettingInspection(vesselId, form)
-      setForm(EMPTY_FORM)
+      if (editingId !== null) {
+        await updateVettingInspection(vesselId, editingId, form)
+      } else {
+        await createVettingInspection(vesselId, form)
+      }
+      handleCancelEdit()
       setStatus(await getVettingStatus(vesselId))
       setInspections(await listVettingInspections(vesselId))
     } catch (err) {
@@ -87,7 +124,11 @@ export default function VettingInspectionsPage() {
         </label>
       )}
 
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
 
       {vesselId !== '' && status && (
         <section>
@@ -99,7 +140,9 @@ export default function VettingInspectionsPage() {
               <tbody>
                 <tr>
                   <th>{t('vetting.statusLabel')}</th>
-                  <td>{t(STATUS_KEYS[status.status])}</td>
+                  <td>
+                    <Badge tone={STATUS_TONES[status.status]}>{t(STATUS_KEYS[status.status])}</Badge>
+                  </td>
                 </tr>
                 <tr>
                   <th>{t('vetting.inspectingBody')}</th>
@@ -118,6 +161,7 @@ export default function VettingInspectionsPage() {
       {vesselId !== '' && inspections.length > 0 && (
         <section>
           <h2>{t('vetting.historyHeading')}</h2>
+          <div className="table-scroll">
           <table>
             <thead>
               <tr>
@@ -127,6 +171,7 @@ export default function VettingInspectionsPage() {
                 <th>{t('vetting.columnExpiryDate')}</th>
                 <th>{t('vetting.columnStatus')}</th>
                 <th>{t('vetting.columnObservations')}</th>
+                <th></th>
               </tr>
             </thead>
             <tbody>
@@ -136,18 +181,27 @@ export default function VettingInspectionsPage() {
                   <td>{insp.inspecting_body}</td>
                   <td>{insp.inspection_type}</td>
                   <td>{insp.expiry_date}</td>
-                  <td>{t(STATUS_KEYS[insp.status])}</td>
+                  <td>
+                    <Badge tone={STATUS_TONES[insp.status]}>{t(STATUS_KEYS[insp.status])}</Badge>
+                  </td>
                   <td>{insp.observations}</td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(insp)}>
+                      {t('common.edit')}
+                    </button>
+                  </td>
                 </tr>
               ))}
             </tbody>
           </table>
+          </div>
         </section>
       )}
 
       {vesselId !== '' && (
         <section>
-          <h2>{t('vetting.createHeading')}</h2>
+          <h2>{editingId !== null ? t('vetting.editHeading') : t('vetting.createHeading')}</h2>
+          {editingId !== null && <p role="alert">{t('vetting.editWarning')}</p>}
           <form onSubmit={handleSubmit}>
             <label>
               {t('vetting.inspectionDate')}
@@ -181,7 +235,12 @@ export default function VettingInspectionsPage() {
               {t('vetting.observations')}
               <input value={form.observations ?? ''} onChange={field('observations')} />
             </label>
-            <button type="submit">{t('vetting.createButton')}</button>
+            <button type="submit">{editingId !== null ? t('vetting.updateButton') : t('vetting.createButton')}</button>
+            {editingId !== null && (
+              <button type="button" onClick={handleCancelEdit}>
+                {t('common.cancel')}
+              </button>
+            )}
           </form>
         </section>
       )}

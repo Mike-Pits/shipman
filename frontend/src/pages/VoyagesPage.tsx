@@ -80,44 +80,46 @@ export default function VoyagesPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>{t('voyages.columnVoyageNumber')}</th>
-              <th>{t('voyages.columnVessel')}</th>
-              <th>{t('voyages.columnLoadPort')}</th>
-              <th>{t('voyages.columnDischargePort')}</th>
-              <th>{t('voyages.columnStartDate')}</th>
-              <th>{t('voyages.columnCargoQty')}</th>
-              <th></th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {voyages.map((v) => (
-              <tr key={v.id}>
-                <td>{v.voyage_number}</td>
-                <td>{vesselName(v.vessel_id)}</td>
-                <td>{v.load_port}</td>
-                <td>{v.discharge_port}</td>
-                <td>{v.start_date}</td>
-                <td>{v.cargo_quantity_mt}</td>
-                <td>
-                  {v.warnings.map((w, i) => (
-                    <p key={i} role="alert">
-                      {w}
-                    </p>
-                  ))}
-                </td>
-                <td>
-                  <button type="button" onClick={() => handleEdit(v)}>
-                    {t('common.edit')}
-                  </button>
-                </td>
+        <div className="table-scroll">
+          <table>
+            <thead>
+              <tr>
+                <th>{t('voyages.columnVoyageNumber')}</th>
+                <th>{t('voyages.columnVessel')}</th>
+                <th>{t('voyages.columnLoadPort')}</th>
+                <th>{t('voyages.columnDischargePort')}</th>
+                <th>{t('voyages.columnStartDate')}</th>
+                <th>{t('voyages.columnCargoQty')}</th>
+                <th></th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {voyages.map((v) => (
+                <tr key={v.id}>
+                  <td>{v.voyage_number}</td>
+                  <td>{vesselName(v.vessel_id)}</td>
+                  <td>{v.load_port}</td>
+                  <td>{v.discharge_port}</td>
+                  <td>{v.start_date}</td>
+                  <td>{v.cargo_quantity_mt}</td>
+                  <td>
+                    {v.warnings.map((w, i) => (
+                      <p key={i} role="alert">
+                        {w}
+                      </p>
+                    ))}
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(v)}>
+                      {t('common.edit')}
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
 
       <h2>{editingId !== null ? t('voyages.editVoyage') : t('voyages.createVoyage')}</h2>
@@ -197,7 +199,11 @@ export default function VoyagesPage() {
           </button>
         )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

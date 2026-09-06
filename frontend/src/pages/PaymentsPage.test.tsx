@@ -167,4 +167,40 @@ describe('PaymentsPage', () => {
 
     expect(await screen.findByText(/10000 USD/)).toBeInTheDocument()
   })
+
+  it('lets the operator correct a payment and submits a PUT preserving its status', async () => {
+    const user = userEvent.setup()
+    const correctedPayment = { ...SAMPLE_PAYMENT, cost_type_name: 'Port Charges (corrected)', original_amount: 850000, rub_equivalent: 850000 }
+    const fetchMock = mockFetchByUrl({
+      '/payments': [
+        { status: 200, body: [SAMPLE_PAYMENT] },
+        { status: 200, body: correctedPayment },
+        { status: 200, body: [correctedPayment] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/voyages': [{ status: 200, body: [] }],
+    })
+
+    render(<PaymentsPage />)
+    await waitFor(() => expect(screen.getAllByText('MV Arctic').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/editing.*existing/i)
+    const amountInput = screen.getByLabelText(/original amount/i)
+    await user.clear(amountInput)
+    await user.type(amountInput, '850000')
+    await user.click(screen.getByRole('button', { name: /update payment/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/payments/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body).toMatchObject({ original_amount: 850000, status: 'draft' })
+
+    expect(await screen.findByText('Port Charges (corrected)')).toBeInTheDocument()
+  })
 })

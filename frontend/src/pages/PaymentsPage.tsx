@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createPayment, getPaymentWithDisplay, listPayments, updatePaymentStatus } from '../api/payments'
+import { createPayment, getPaymentWithDisplay, listPayments, updatePayment, updatePaymentStatus } from '../api/payments'
 import { listVessels } from '../api/vessels'
 import { listVoyages } from '../api/voyages'
 import type {
@@ -49,6 +49,7 @@ export default function PaymentsPage() {
   const [form, setForm] = useState<PaymentCreate>(EMPTY_FORM)
   const [error, setError] = useState<string | null>(null)
   const [displayAmounts, setDisplayAmounts] = useState<Record<number, { currency: PaymentCurrency; amount: number }>>({})
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listPayments().then(setPayments)
 
@@ -67,6 +68,22 @@ export default function PaymentsPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
 
+  const handleEdit = (payment: Payment) => {
+    setError(null)
+    setEditingId(payment.id)
+    const { id, rub_equivalent, exchange_rate_used, exchange_rate_date, ...rest } = payment
+    void id
+    void rub_equivalent
+    void exchange_rate_used
+    void exchange_rate_date
+    setForm(rest)
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
@@ -75,8 +92,12 @@ export default function PaymentsPage() {
         ...form,
         voyage_id: form.voyage_id || null,
       }
-      await createPayment(payload)
-      setForm(EMPTY_FORM)
+      if (editingId !== null) {
+        await updatePayment(editingId, payload)
+      } else {
+        await createPayment(payload)
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record payment')
@@ -112,6 +133,7 @@ export default function PaymentsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -166,14 +188,19 @@ export default function PaymentsPage() {
                       })}
                     </span>
                   )}
+                  <button type="button" onClick={() => handleEdit(p)}>
+                    {t('common.edit')}
+                  </button>
                 </td>
               </tr>
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <h2>{t('payments.createHeading')}</h2>
+      <h2>{editingId !== null ? t('payments.editHeading') : t('payments.createHeading')}</h2>
+      {editingId !== null && <p role="alert">{t('payments.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
           {t('payments.vessel')}
@@ -257,9 +284,18 @@ export default function PaymentsPage() {
           {t('payments.notes')}
           <input value={form.notes ?? ''} onChange={field('notes')} />
         </label>
-        <button type="submit">{t('payments.createButton')}</button>
+        <button type="submit">{editingId !== null ? t('payments.updateButton') : t('payments.createButton')}</button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

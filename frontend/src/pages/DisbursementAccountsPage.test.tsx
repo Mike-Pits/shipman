@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import DisbursementAccountsPage from './DisbursementAccountsPage'
@@ -170,5 +170,91 @@ describe('DisbursementAccountsPage', () => {
     await user.click(screen.getByRole('button', { name: /mark disputed/i }))
 
     expect(await screen.findByText(/disputed/i)).toBeInTheDocument()
+  })
+
+  it('lets the operator correct the PDA header fields and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedDa = { ...SAMPLE_DA, port: 'Rotterdam Port', pda_amount: 16000, variance: -16000 }
+    const fetchMock = mockFetchByUrl({
+      '/disbursement-accounts': [
+        { status: 200, body: [SAMPLE_DA] },
+        { status: 200, body: correctedDa },
+        { status: 200, body: [correctedDa] },
+      ],
+      '/voyages': [{ status: 200, body: [VOYAGE] }],
+    })
+
+    render(<DisbursementAccountsPage />)
+    await waitFor(() => expect(screen.getAllByText('V-001').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    expect(screen.getByRole('alert')).toHaveTextContent(/editing.*existing/i)
+    const portInput = screen.getByLabelText(/^port/i)
+    await user.clear(portInput)
+    await user.type(portInput, 'Rotterdam Port')
+    await user.click(screen.getByRole('button', { name: /update pda/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/disbursement-accounts/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body.port).toBe('Rotterdam Port')
+
+    expect(await screen.findByText('Rotterdam Port')).toBeInTheDocument()
+  })
+
+  it('lets the operator correct an existing FDA line and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const daWithLine = {
+      ...SAMPLE_DA,
+      status: 'fda_pending',
+      lines: [{ id: 1, line_type: 'pilotage', description: 'Inbound pilot', amount: 3000, currency: 'USD' }],
+      fda_total: 3000,
+      variance: -12000,
+    }
+    const correctedDa = {
+      ...daWithLine,
+      lines: [{ id: 1, line_type: 'pilotage', description: 'Inbound pilot (corrected)', amount: 3200, currency: 'USD' }],
+      fda_total: 3200,
+      variance: -11800,
+    }
+    const fetchMock = mockFetchByUrl({
+      '/disbursement-accounts/1/fda-lines/1': [{ status: 200, body: correctedDa }],
+      '/disbursement-accounts': [
+        { status: 200, body: [daWithLine] },
+        { status: 200, body: [correctedDa] },
+      ],
+      '/voyages': [{ status: 200, body: [VOYAGE] }],
+    })
+
+    render(<DisbursementAccountsPage />)
+    await waitFor(() => expect(screen.getAllByText('V-001').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /view lines/i }))
+    await user.click(screen.getByRole('button', { name: /^edit line$/i }))
+
+    const saveButton = screen.getByRole('button', { name: /save line/i })
+    const editForm = within(saveButton.closest('form')!)
+    const descriptionInput = editForm.getByLabelText(/description/i)
+    await user.clear(descriptionInput)
+    await user.type(descriptionInput, 'Inbound pilot (corrected)')
+    const amountInput = editForm.getByLabelText(/^amount/i)
+    await user.clear(amountInput)
+    await user.type(amountInput, '3200')
+    await user.click(saveButton)
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([url]) => url.includes('/fda-lines/1'))
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body).toMatchObject({ description: 'Inbound pilot (corrected)', amount: 3200 })
+
+    expect(await screen.findByText('-11800')).toBeInTheDocument()
   })
 })

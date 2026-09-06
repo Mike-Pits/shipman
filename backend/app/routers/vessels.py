@@ -126,6 +126,23 @@ def list_vetting_inspections(vessel_id: int, db: Session = Depends(get_db)):
     )
 
 
+@router.put("/{vessel_id}/vetting-inspections/{inspection_id}", response_model=VettingInspectionRead)
+def update_vetting_inspection(
+    vessel_id: int, inspection_id: int, payload: VettingInspectionCreate, db: Session = Depends(get_db)
+):
+    if db.get(Vessel, vessel_id) is None:
+        raise HTTPException(status_code=404, detail="Vessel not found")
+    inspection = db.get(VettingInspection, inspection_id)
+    if inspection is None or inspection.vessel_id != vessel_id:
+        raise HTTPException(status_code=404, detail="Vetting inspection not found")
+
+    for field, value in payload.model_dump().items():
+        setattr(inspection, field, value)
+    db.commit()
+    db.refresh(inspection)
+    return inspection
+
+
 @router.get("/{vessel_id}/vetting-status", response_model=VettingStatusRead)
 def get_vetting_status(vessel_id: int, db: Session = Depends(get_db)):
     if db.get(Vessel, vessel_id) is None:

@@ -1,7 +1,14 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createVoyageEstimate, listVoyageEstimates, promoteVoyageEstimate, updateVoyageEstimateStatus } from '../api/voyageEstimates'
+import {
+  createVoyageEstimate,
+  listVoyageEstimates,
+  promoteVoyageEstimate,
+  updateVoyageEstimate,
+  updateVoyageEstimateStatus,
+} from '../api/voyageEstimates'
 import { listVessels } from '../api/vessels'
+import Badge, { type BadgeTone } from '../components/ui/Badge'
 import type { EstimateStatus, RateBasis, Vessel, VoyageEstimate, VoyageEstimateCreate } from '../api/types'
 
 const EMPTY_FORM: VoyageEstimateCreate = {
@@ -28,6 +35,13 @@ const STATUS_KEYS: Record<EstimateStatus, string> = {
   declined: 'voyageEstimates.statusDeclined',
 }
 
+const STATUS_TONES: Record<EstimateStatus, BadgeTone> = {
+  draft: 'neutral',
+  under_negotiation: 'info',
+  fixed: 'success',
+  declined: 'danger',
+}
+
 export default function VoyageEstimatesPage() {
   const { t } = useTranslation()
   const [estimates, setEstimates] = useState<VoyageEstimate[]>([])
@@ -37,6 +51,7 @@ export default function VoyageEstimatesPage() {
   const [promotingId, setPromotingId] = useState<number | null>(null)
   const [charterer, setCharterer] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listVoyageEstimates().then(setEstimates)
 
@@ -51,12 +66,43 @@ export default function VoyageEstimatesPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
 
+  const handleEdit = (est: VoyageEstimate) => {
+    setError(null)
+    setEditingId(est.id)
+    setForm({
+      vessel_id: est.vessel_id,
+      load_port: est.load_port,
+      discharge_port: est.discharge_port,
+      laycan_start: est.laycan_start,
+      laycan_end: est.laycan_end,
+      cargo_grade: est.cargo_grade,
+      estimated_cargo_quantity_mt: est.estimated_cargo_quantity_mt,
+      estimated_rate: est.estimated_rate,
+      estimated_rate_basis: est.estimated_rate_basis,
+      currency: est.currency,
+      estimated_bunker_consumption_mt: est.estimated_bunker_consumption_mt,
+      estimated_bunker_cost: est.estimated_bunker_cost,
+      estimated_port_costs: est.estimated_port_costs,
+      estimated_duration_days: est.estimated_duration_days,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
-      await createVoyageEstimate({ ...form, vessel_id: form.vessel_id || null })
-      setForm(EMPTY_FORM)
+      const payload = { ...form, vessel_id: form.vessel_id || null }
+      if (editingId !== null) {
+        await updateVoyageEstimate(editingId, payload)
+      } else {
+        await createVoyageEstimate(payload)
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to create estimate')
@@ -107,6 +153,7 @@ export default function VoyageEstimatesPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -140,8 +187,13 @@ export default function VoyageEstimatesPage() {
                 <td>{est.estimated_costs}</td>
                 <td>{est.estimated_net_result}</td>
                 <td>{est.estimated_tce_per_day}</td>
-                <td>{t(STATUS_KEYS[est.status])}</td>
                 <td>
+                  <Badge tone={STATUS_TONES[est.status]}>{t(STATUS_KEYS[est.status])}</Badge>
+                </td>
+                <td>
+                  <button type="button" onClick={() => handleEdit(est)}>
+                    {t('common.edit')}
+                  </button>
                   {canProgress(est.status) && (
                     <>
                       {est.status === 'draft' && (
@@ -172,9 +224,11 @@ export default function VoyageEstimatesPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <h2>{t('voyageEstimates.createHeading')}</h2>
+      <h2>{editingId !== null ? t('voyageEstimates.editHeading') : t('voyageEstimates.createHeading')}</h2>
+      {editingId !== null && <p role="alert">{t('voyageEstimates.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
           {t('voyageEstimates.vessel')}
@@ -281,9 +335,20 @@ export default function VoyageEstimatesPage() {
             required
           />
         </label>
-        <button type="submit">{t('voyageEstimates.createButton')}</button>
+        <button type="submit">
+          {editingId !== null ? t('voyageEstimates.updateButton') : t('voyageEstimates.createButton')}
+        </button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

@@ -117,9 +117,9 @@ export default function VesselsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
-        <div style={{ maxHeight: '27rem', overflowY: 'auto', border: '1px solid #ccc' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead style={{ position: 'sticky', top: 0, background: '#fff' }}>
+        <div className="table-scroll">
+          <table>
+            <thead>
               <tr>
                 <th>{t('vessels.columnName')}</th>
                 <th>{t('vessels.columnImo')}</th>
@@ -204,7 +204,7 @@ export default function VesselsPage() {
             required
           />
         </label>
-        <h3 style={{ gridColumn: '1 / -1', marginBottom: 0 }}>{t('vessels.fuelConsumptionHeading')}</h3>
+        <h3 className="form-section-heading">{t('vessels.fuelConsumptionHeading')}</h3>
         {FUEL_MODE_KEYS.map(({ mode, labelKey }) => (
           <label key={`${mode}-ifo`}>
             {t(labelKey)} IFO
@@ -225,7 +225,11 @@ export default function VesselsPage() {
           </button>
         )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

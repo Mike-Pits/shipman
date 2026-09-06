@@ -134,4 +134,46 @@ describe('VettingInspectionsPage', () => {
 
     await waitFor(() => expect(screen.getAllByText(/^expired$/i).length).toBeGreaterThan(0))
   })
+
+  it('lets the operator correct an inspection and submits a PUT', async () => {
+    const user = userEvent.setup()
+    const correctedInspection = { ...SAMPLE_INSPECTION, status: 'failed', observations: 'Corrected: 2 findings' }
+    const fetchMock = mockFetchByUrl({
+      '/vessels/1/vetting-status': [
+        { status: 200, body: { status: 'approved', inspecting_body: 'Shell SIRE', expiry_date: '2026-12-31' } },
+        { status: 200, body: { status: 'failed', inspecting_body: 'Shell SIRE', expiry_date: '2026-12-31' } },
+      ],
+      '/vessels/1/vetting-inspections/1': [{ status: 200, body: correctedInspection }],
+      '/vessels/1/vetting-inspections': [
+        { status: 200, body: [SAMPLE_INSPECTION] },
+        { status: 200, body: [correctedInspection] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+    })
+
+    render(<VettingInspectionsPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await userEvent.selectOptions(screen.getByLabelText(/vessel/i), '1')
+    await waitFor(() => expect(screen.getAllByText('Shell SIRE').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /^edit$/i }))
+
+    const observationsInput = screen.getByLabelText(/observations/i)
+    await user.clear(observationsInput)
+    await user.type(observationsInput, 'Corrected: 2 findings')
+    await userEvent.selectOptions(screen.getByLabelText(/^status/i), 'failed')
+    await user.click(screen.getByRole('button', { name: /update inspection/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    expect(putCall[0]).toContain('/vessels/1/vetting-inspections/1')
+    const body = JSON.parse(putCall[1]!.body as string)
+    expect(body).toMatchObject({ status: 'failed', observations: 'Corrected: 2 findings' })
+
+    await waitFor(() => expect(screen.getAllByText(/^failed$/i).length).toBeGreaterThan(0))
+  })
 })

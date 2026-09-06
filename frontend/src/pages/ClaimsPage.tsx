@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createClaim, listClaims, settleClaim, updateClaimStatus } from '../api/claims'
+import { createClaim, listClaims, settleClaim, updateClaim, updateClaimStatus } from '../api/claims'
 import { listVoyages } from '../api/voyages'
+import Badge, { type BadgeTone } from '../components/ui/Badge'
 import type { Claim, ClaimCreate, ClaimStatus, ClaimType, Voyage } from '../api/types'
 
 const EMPTY_FORM: ClaimCreate = {
@@ -23,6 +24,13 @@ const STATUS_KEYS: Record<ClaimStatus, string> = {
   rejected: 'claims.statusRejected',
 }
 
+const STATUS_TONES: Record<ClaimStatus, BadgeTone> = {
+  open: 'warning',
+  negotiating: 'info',
+  settled: 'success',
+  rejected: 'danger',
+}
+
 const TYPE_KEYS: Record<ClaimType, string> = {
   cargo_quantity: 'claims.typeCargoQuantity',
   cargo_quality: 'claims.typeCargoQuality',
@@ -39,6 +47,7 @@ export default function ClaimsPage() {
   const [form, setForm] = useState<ClaimCreate>(EMPTY_FORM)
   const [settlementAmounts, setSettlementAmounts] = useState<Record<number, string>>({})
   const [error, setError] = useState<string | null>(null)
+  const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listClaims().then(setClaims)
 
@@ -53,12 +62,38 @@ export default function ClaimsPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
 
+  const handleEdit = (claim: Claim) => {
+    setError(null)
+    setEditingId(claim.id)
+    setForm({
+      voyage_id: claim.voyage_id,
+      fixture_id: claim.fixture_id,
+      disbursement_account_id: claim.disbursement_account_id,
+      claim_type: claim.claim_type,
+      counterparty: claim.counterparty,
+      amount_claimed: claim.amount_claimed,
+      currency: claim.currency,
+      date_raised: claim.date_raised,
+      notes: claim.notes,
+    })
+  }
+
+  const handleCancelEdit = () => {
+    setEditingId(null)
+    setForm(EMPTY_FORM)
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
-      await createClaim({ ...form, voyage_id: form.voyage_id || null })
-      setForm(EMPTY_FORM)
+      const payload = { ...form, voyage_id: form.voyage_id || null }
+      if (editingId !== null) {
+        await updateClaim(editingId, payload)
+      } else {
+        await createClaim(payload)
+      }
+      handleCancelEdit()
       await refresh()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to record claim')
@@ -96,6 +131,7 @@ export default function ClaimsPage() {
       {loading ? (
         <p>{t('common.loading')}</p>
       ) : (
+        <div className="table-scroll">
         <table>
           <thead>
             <tr>
@@ -119,9 +155,14 @@ export default function ClaimsPage() {
                   {c.amount_claimed} {c.currency}
                 </td>
                 <td>{c.amount_settled ?? ''}</td>
-                <td>{t(STATUS_KEYS[c.status])}</td>
+                <td>
+                  <Badge tone={STATUS_TONES[c.status]}>{t(STATUS_KEYS[c.status])}</Badge>
+                </td>
                 <td>{c.date_raised}</td>
                 <td>
+                  <button type="button" onClick={() => handleEdit(c)}>
+                    {t('common.edit')}
+                  </button>
                   {canProgress(c.status) && (
                     <>
                       {c.status === 'open' && (
@@ -152,9 +193,11 @@ export default function ClaimsPage() {
             ))}
           </tbody>
         </table>
+        </div>
       )}
 
-      <h2>{t('claims.createHeading')}</h2>
+      <h2>{editingId !== null ? t('claims.editHeading') : t('claims.createHeading')}</h2>
+      {editingId !== null && <p role="alert">{t('claims.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
           {t('claims.voyage')}
@@ -206,9 +249,18 @@ export default function ClaimsPage() {
           {t('claims.notes')}
           <input value={form.notes ?? ''} onChange={field('notes')} />
         </label>
-        <button type="submit">{t('claims.createButton')}</button>
+        <button type="submit">{editingId !== null ? t('claims.updateButton') : t('claims.createButton')}</button>
+        {editingId !== null && (
+          <button type="button" onClick={handleCancelEdit}>
+            {t('common.cancel')}
+          </button>
+        )}
       </form>
-      {error && <p role="alert">{error}</p>}
+      {error && (
+        <p role="alert" className="alert-danger">
+          {error}
+        </p>
+      )}
     </div>
   )
 }

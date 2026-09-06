@@ -51,6 +51,18 @@ def get_voyage_estimate(estimate_id: int, db: Session = Depends(get_db)):
     return _to_read(_get_estimate_or_404(estimate_id, db), db)
 
 
+@router.put("/{estimate_id}", response_model=VoyageEstimateRead)
+def update_voyage_estimate(
+    estimate_id: int, payload: VoyageEstimateCreate, db: Session = Depends(get_db)
+):
+    estimate = _get_estimate_or_404(estimate_id, db)
+    for field, value in payload.model_dump().items():
+        setattr(estimate, field, value)
+    db.commit()
+    db.refresh(estimate)
+    return _to_read(estimate, db)
+
+
 @router.post("/{estimate_id}/status", response_model=VoyageEstimateRead)
 def update_estimate_status(
     estimate_id: int, payload: VoyageEstimateStatusUpdate, db: Session = Depends(get_db)
