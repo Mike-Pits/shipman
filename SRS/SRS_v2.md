@@ -166,11 +166,11 @@ Multi-user roles (Master with vessel-scoped daily-report access, Finance read-on
 
 ### 4.3 Fixture Management
 
-**FR-06:** System shall record Fixtures of three types: **Voyage Charter**, **Time Charter Out**, **COA**. Time Charter In is not supported (this operator does not charter tonnage in).
+**FR-06:** System shall record Fixtures of three types: **Voyage Charter**, **Time Charter Out**, **COA**. Time Charter In is not supported (this operator does not charter tonnage in). Every Fixture, regardless of type, also carries three universal fields: **date concluded** (the date the deal was struck), **charter party reference** (the deal's ref/C-P number, up to 15 characters), and **charter party type** (the proforma document used, e.g. ASBATANKVOY, SHELLVOY6, GENCON — free text). All three are optional to accommodate historical fixtures where this detail wasn't recorded.
 
 **FR-07:** Voyage Charter fixture fields: charterer, freight rate (per tonne or lump sum), laycan, load/discharge ports, cargo/grade, demurrage rate, despatch rate, laytime terms, contract currency.
 
-**FR-08:** Time Charter Out fixture fields: charterer, hire rate (daily/monthly), charter period (from/to or min-max duration), delivery/redelivery ports and conditions, contract currency, and **hire payment terms** — operator-defined at fixture creation, not assumed by the system. Payment terms capture the billing basis (e.g. in advance, in arrears, or a fixed number of days after invoice date) and billing frequency (e.g. every 15 or 30 days); the system does not hardcode a single payment convention.
+**FR-08:** Time Charter Out fixture fields: charterer, hire rate (daily/monthly), charter period (from/to or min-max duration), delivery/redelivery ports and conditions, delivery ROB and redelivery ROB (remaining bunkers on board, IFO and MGO in MT, each optional), contract currency, and **hire payment terms** — operator-defined at fixture creation, not assumed by the system. Payment terms capture the billing basis (e.g. in advance, in arrears, or a fixed number of days after invoice date) and billing frequency (e.g. every 15 or 30 days); the system does not hardcode a single payment convention. Charter period from/to are delivery and redelivery **timestamps**, not bare dates — hire runs from the exact time of delivery to the exact time of redelivery, so the final hire installment is routinely a partial day and must be prorated to the hour, not rounded to a whole day (see FR-34). A bare date is still accepted (assumed midnight) for fixtures that genuinely don't need that precision.
 
 **FR-09:** COA fixture fields: charterer, contract period, cargo/grade, total contracted quantity or number of lifts, rate per tonne (may vary by period/escalation clause), minimum/maximum cargo quantity per lift.
 
@@ -242,7 +242,7 @@ System shall maintain a **folder↔vessel registry**: the vessel a folder is pol
 
 **FR-33:** Payments link to: vessel (required), voyage (optional), fixture (optional), vendor (for expenses, optional), cost type, DA (optional, for reconciled port-cost payments).
 
-**FR-34:** For Time Charter Out fixtures, the system shall generate hire payment installments **according to the fixture's configured payment terms (FR-08)** — supporting advance billing, arrears billing, and fixed-days-after-invoice-date terms — rather than assuming a single fixed billing basis.
+**FR-34:** For Time Charter Out fixtures, the system shall generate hire payment installments **according to the fixture's configured payment terms (FR-08)** — supporting advance billing, arrears billing, and fixed-days-after-invoice-date terms — rather than assuming a single fixed billing basis. Triggered from the Fixtures page (vessel selection required); for fixed-days-after-invoice-date terms, the operator may optionally anchor the schedule to the real first invoice date rather than accepting the period-start default — the whole installment schedule shifts by that offset (this shift is date-only; a Payment's invoice/due dates never carry a time of day). Each installment boundary is computed from the delivery timestamp forward (preserving its time of day), so the final installment is prorated to the exact hour of redelivery rather than rounded to a whole day. Generated installments are ordinary Payment records (FR-33) and remain editable afterward on the Payments page like any other payment.
 
 ### 4.10 Off-Hire Tracking
 

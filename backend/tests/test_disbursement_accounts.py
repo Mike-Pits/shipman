@@ -54,6 +54,23 @@ def test_operator_can_record_a_pda_for_a_port_call(client):
     assert created["variance"] == -15000
 
 
+def test_pda_rejects_a_currency_other_than_rub_or_usd(client):
+    voyage_id = _create_voyage(client)
+
+    response = client.post(
+        "/disbursement-accounts",
+        json={
+            "voyage_id": voyage_id,
+            "port": "Rotterdam",
+            "pda_amount": 15000,
+            "pda_currency": "EUR",
+            "pda_date": "2026-06-05",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_adding_fda_lines_computes_total_and_variance_and_moves_to_fda_pending(client):
     voyage_id = _create_voyage(client)
     da = client.post(

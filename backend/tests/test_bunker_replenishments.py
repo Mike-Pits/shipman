@@ -27,6 +27,24 @@ def test_bunker_cost_is_calculated_automatically_from_price_and_quantity(client)
     assert created["total_cost"] == 110000
 
 
+def test_bunker_replenishment_rejects_a_currency_other_than_rub_or_usd(client):
+    vessel_id = _create_vessel(client)
+
+    response = client.post(
+        "/bunker-replenishments",
+        json={
+            "vessel_id": vessel_id,
+            "replenishment_datetime": "2026-06-01 10:00:00",
+            "port": "Ust-Luga",
+            "supplier": "Baltic Bunker Co",
+            "currency": "EUR",
+            "lines": [{"fuel_grade": "IFO", "quantity_mt": 200, "price_per_mt": 550}],
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_a_replenishment_event_can_cover_multiple_fuel_grades_priced_independently(client):
     vessel_id = _create_vessel(client)
 

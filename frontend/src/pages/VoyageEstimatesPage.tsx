@@ -9,7 +9,7 @@ import {
 } from '../api/voyageEstimates'
 import { listVessels } from '../api/vessels'
 import Badge, { type BadgeTone } from '../components/ui/Badge'
-import type { EstimateStatus, RateBasis, Vessel, VoyageEstimate, VoyageEstimateCreate } from '../api/types'
+import type { Currency, EstimateStatus, RateBasis, Vessel, VoyageEstimate, VoyageEstimateCreate } from '../api/types'
 
 const EMPTY_FORM: VoyageEstimateCreate = {
   vessel_id: null,
@@ -21,7 +21,7 @@ const EMPTY_FORM: VoyageEstimateCreate = {
   estimated_cargo_quantity_mt: 0,
   estimated_rate: 0,
   estimated_rate_basis: '' as RateBasis,
-  currency: '',
+  currency: '' as Currency,
   estimated_bunker_consumption_mt: 0,
   estimated_bunker_cost: 0,
   estimated_port_costs: 0,
@@ -293,7 +293,13 @@ export default function VoyageEstimatesPage() {
         </label>
         <label>
           {t('voyageEstimates.currency')}
-          <input value={form.currency} onChange={field('currency')} required />
+          <select value={form.currency} onChange={field('currency')} required>
+            <option value="" disabled>
+              {t('voyageEstimates.selectCurrency')}
+            </option>
+            <option value="RUB">RUB</option>
+            <option value="USD">USD</option>
+          </select>
         </label>
         <label>
           {t('voyageEstimates.bunkerConsumption')}

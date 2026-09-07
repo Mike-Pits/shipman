@@ -1,12 +1,13 @@
-import { useEffect, useState } from 'react'
+import { Fragment, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createFixture, listFixtures, updateFixture } from '../api/fixtures'
-import type { Fixture, FixtureCreate, FixtureType } from '../api/types'
+import { createFixture, generateHireInstallments, listFixtures, updateFixture } from '../api/fixtures'
+import { listVessels } from '../api/vessels'
+import type { Currency, Fixture, FixtureCreate, FixtureType, Vessel } from '../api/types'
 
 const EMPTY_FORM: FixtureCreate = {
   fixture_type: 'voyage_charter',
   charterer: '',
-  contract_currency: '',
+  contract_currency: '' as Currency,
   brokers: [],
 }
 
@@ -23,20 +24,45 @@ const FIXTURE_TYPE_LABEL_KEYS: Record<FixtureType, string> = {
   coa: 'fixtures.typeCoa',
 }
 
+type InstallmentForm = { vesselId: string; invoiceDateOverride: string }
+const EMPTY_INSTALLMENT_FORM: InstallmentForm = { vesselId: '', invoiceDateOverride: '' }
+
 export default function FixturesPage() {
   const { t } = useTranslation()
   const [fixtures, setFixtures] = useState<Fixture[]>([])
+  const [vessels, setVessels] = useState<Vessel[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<FixtureCreate>(EMPTY_FORM)
   const [brokers, setBrokers] = useState<BrokerRow[]>(EMPTY_BROKERS)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
+  const [installmentForms, setInstallmentForms] = useState<Record<number, InstallmentForm>>({})
+  const [installmentMessage, setInstallmentMessage] = useState<string | null>(null)
 
   const refresh = () => listFixtures().then(setFixtures)
 
   useEffect(() => {
-    refresh().finally(() => setLoading(false))
+    Promise.all([refresh(), listVessels().then(setVessels)]).finally(() => setLoading(false))
   }, [])
+
+  const installmentFormFor = (fixtureId: number) => installmentForms[fixtureId] ?? EMPTY_INSTALLMENT_FORM
+
+  const handleGenerateInstallments = async (fixture: Fixture, e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    setInstallmentMessage(null)
+    const installmentForm = installmentFormFor(fixture.id)
+    try {
+      const installments = await generateHireInstallments(fixture.id, {
+        vessel_id: Number(installmentForm.vesselId),
+        invoice_date_override: installmentForm.invoiceDateOverride || undefined,
+      })
+      setInstallmentForms((f) => ({ ...f, [fixture.id]: EMPTY_INSTALLMENT_FORM }))
+      setInstallmentMessage(t('fixtures.installmentsGenerated', { count: installments.length }))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to generate hire installments')
+    }
+  }
 
   const field =
     (key: keyof FixtureCreate, numeric = false) =>
@@ -104,27 +130,82 @@ export default function FixturesPage() {
                 <th>{t('fixtures.columnCharterer')}</th>
                 <th>{t('fixtures.columnCurrency')}</th>
                 <th>{t('fixtures.columnKeyRate')}</th>
+                <th>{t('fixtures.columnDateConcluded')}</th>
+                <th>{t('fixtures.columnCpRef')}</th>
+                <th>{t('fixtures.columnCpType')}</th>
                 <th></th>
               </tr>
             </thead>
             <tbody>
               {fixtures.map((f) => (
-                <tr key={f.id}>
-                  <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
-                  <td>{f.charterer}</td>
-                  <td>{f.contract_currency}</td>
-                  <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
-                  <td>
-                    <button type="button" onClick={() => handleEdit(f)}>
-                      {t('common.edit')}
-                    </button>
-                  </td>
-                </tr>
+                <Fragment key={f.id}>
+                  <tr>
+                    <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
+                    <td>{f.charterer}</td>
+                    <td>{f.contract_currency}</td>
+                    <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
+                    <td>{f.date_concluded ?? '—'}</td>
+                    <td>{f.charter_party_ref ?? '—'}</td>
+                    <td>{f.charter_party_type ?? '—'}</td>
+                    <td>
+                      <button type="button" onClick={() => handleEdit(f)}>
+                        {t('common.edit')}
+                      </button>
+                    </td>
+                  </tr>
+                  {f.fixture_type === 'time_charter_out' && (
+                    <tr>
+                      <td colSpan={8}>
+                        <form onSubmit={(e) => handleGenerateInstallments(f, e)}>
+                          <label>
+                            {t('fixtures.installmentVessel')}
+                            <select
+                              value={installmentFormFor(f.id).vesselId}
+                              onChange={(e) =>
+                                setInstallmentForms((forms) => ({
+                                  ...forms,
+                                  [f.id]: { ...installmentFormFor(f.id), vesselId: e.target.value },
+                                }))
+                              }
+                              required
+                            >
+                              <option value="" disabled>
+                                {t('fixtures.selectVessel')}
+                              </option>
+                              {vessels.map((v) => (
+                                <option key={v.id} value={v.id}>
+                                  {v.name}
+                                </option>
+                              ))}
+                            </select>
+                          </label>
+                          {f.hire_payment_basis === 'days_after_invoice' && (
+                            <label>
+                              {t('fixtures.installmentInvoiceDateOverride')}
+                              <input
+                                value={installmentFormFor(f.id).invoiceDateOverride}
+                                onChange={(e) =>
+                                  setInstallmentForms((forms) => ({
+                                    ...forms,
+                                    [f.id]: { ...installmentFormFor(f.id), invoiceDateOverride: e.target.value },
+                                  }))
+                                }
+                                placeholder="YYYY-MM-DD"
+                              />
+                            </label>
+                          )}
+                          <button type="submit">{t('fixtures.generateInstallmentsButton')}</button>
+                        </form>
+                      </td>
+                    </tr>
+                  )}
+                </Fragment>
               ))}
             </tbody>
           </table>
         </div>
       )}
+      {installmentMessage && <p role="status">{installmentMessage}</p>}
 
       <h2>{editingId !== null ? t('fixtures.editFixture') : t('fixtures.createFixture')}</h2>
       {editingId !== null && <p role="alert">{t('fixtures.editWarning')}</p>}
@@ -143,7 +224,25 @@ export default function FixturesPage() {
         </label>
         <label>
           {t('fixtures.contractCurrency')}
-          <input value={form.contract_currency} onChange={field('contract_currency')} required />
+          <select value={form.contract_currency} onChange={field('contract_currency')} required>
+            <option value="" disabled>
+              {t('fixtures.selectCurrency')}
+            </option>
+            <option value="RUB">RUB</option>
+            <option value="USD">USD</option>
+          </select>
+        </label>
+        <label>
+          {t('fixtures.dateConcluded')}
+          <input value={form.date_concluded ?? ''} onChange={field('date_concluded')} placeholder="YYYY-MM-DD" />
+        </label>
+        <label>
+          {t('fixtures.charterPartyRef')}
+          <input value={form.charter_party_ref ?? ''} onChange={field('charter_party_ref')} maxLength={15} />
+        </label>
+        <label>
+          {t('fixtures.charterPartyType')}
+          <input value={form.charter_party_type ?? ''} onChange={field('charter_party_type')} />
         </label>
 
         {type === 'voyage_charter' && (
@@ -211,19 +310,65 @@ export default function FixturesPage() {
             </label>
             <label>
               {t('fixtures.charterPeriodFrom')}
-              <input value={form.charter_period_from ?? ''} onChange={field('charter_period_from')} />
+              <input
+                value={form.charter_period_from ?? ''}
+                onChange={field('charter_period_from')}
+                placeholder="YYYY-MM-DD HH:MM"
+              />
             </label>
             <label>
               {t('fixtures.charterPeriodTo')}
-              <input value={form.charter_period_to ?? ''} onChange={field('charter_period_to')} />
+              <input
+                value={form.charter_period_to ?? ''}
+                onChange={field('charter_period_to')}
+                placeholder="YYYY-MM-DD HH:MM"
+              />
             </label>
             <label>
               {t('fixtures.deliveryPort')}
               <input value={form.delivery_port ?? ''} onChange={field('delivery_port')} />
             </label>
+            <h3>{t('fixtures.deliveryRobHeading')}</h3>
+            <label>
+              {t('fixtures.robGradeIfo')}
+              <input
+                type="number"
+                step="0.01"
+                value={form.delivery_rob_ifo_mt ?? ''}
+                onChange={field('delivery_rob_ifo_mt', true)}
+              />
+            </label>
+            <label>
+              {t('fixtures.robGradeMgo')}
+              <input
+                type="number"
+                step="0.01"
+                value={form.delivery_rob_mgo_mt ?? ''}
+                onChange={field('delivery_rob_mgo_mt', true)}
+              />
+            </label>
             <label>
               {t('fixtures.redeliveryPort')}
               <input value={form.redelivery_port ?? ''} onChange={field('redelivery_port')} />
+            </label>
+            <h3>{t('fixtures.redeliveryRobHeading')}</h3>
+            <label>
+              {t('fixtures.robGradeIfo')}
+              <input
+                type="number"
+                step="0.01"
+                value={form.redelivery_rob_ifo_mt ?? ''}
+                onChange={field('redelivery_rob_ifo_mt', true)}
+              />
+            </label>
+            <label>
+              {t('fixtures.robGradeMgo')}
+              <input
+                type="number"
+                step="0.01"
+                value={form.redelivery_rob_mgo_mt ?? ''}
+                onChange={field('redelivery_rob_mgo_mt', true)}
+              />
             </label>
             <label>
               {t('fixtures.redeliveryConditions')}

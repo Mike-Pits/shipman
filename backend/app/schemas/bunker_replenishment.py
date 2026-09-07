@@ -1,5 +1,7 @@
 from pydantic import BaseModel, ConfigDict, computed_field
 
+from app.schemas.common import Currency
+
 
 class BunkerReplenishmentLineCreate(BaseModel):
     fuel_grade: str
@@ -24,7 +26,7 @@ class BunkerReplenishmentCreate(BaseModel):
     port: str
     supplier: str
     invoice_number: str | None = None
-    currency: str
+    currency: Currency
     lines: list[BunkerReplenishmentLineCreate]
 
 
@@ -37,7 +39,7 @@ class BunkerReplenishmentRead(BaseModel):
     port: str
     supplier: str
     invoice_number: str | None
-    currency: str
+    currency: Currency
     lines: list[BunkerReplenishmentLineRead]
 
     @computed_field

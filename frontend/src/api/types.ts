@@ -1,3 +1,5 @@
+export type Currency = 'RUB' | 'USD'
+
 export type FuelConsumptionMode = 'laden' | 'ballast' | 'idle_anchor' | 'discharging'
 
 export interface FuelConsumptionProfile {
@@ -48,7 +50,11 @@ export interface FixtureBrokerRead extends FixtureBroker {
 export interface FixtureCreate {
   fixture_type: FixtureType
   charterer: string
-  contract_currency: string
+  contract_currency: Currency
+
+  date_concluded?: string
+  charter_party_ref?: string
+  charter_party_type?: string
 
   // Voyage Charter
   freight_rate?: number
@@ -68,7 +74,11 @@ export interface FixtureCreate {
   charter_period_from?: string
   charter_period_to?: string
   delivery_port?: string
+  delivery_rob_ifo_mt?: number
+  delivery_rob_mgo_mt?: number
   redelivery_port?: string
+  redelivery_rob_ifo_mt?: number
+  redelivery_rob_mgo_mt?: number
   redelivery_conditions?: string
   hire_payment_basis?: HirePaymentBasis
   hire_payment_frequency_days?: number
@@ -89,6 +99,11 @@ export interface FixtureCreate {
 export interface Fixture extends FixtureCreate {
   id: number
   brokers: FixtureBrokerRead[]
+}
+
+export interface GenerateHireInstallmentsRequest {
+  vessel_id: number
+  invoice_date_override?: string
 }
 
 export interface VoyageCreate {
@@ -173,7 +188,7 @@ export interface BunkerReplenishmentCreate {
   port: string
   supplier: string
   invoice_number?: string | null
-  currency: string
+  currency: Currency
   lines: BunkerReplenishmentLineCreate[]
 }
 
@@ -189,7 +204,7 @@ export interface DisbursementAccountLineCreate {
   line_type: string
   description: string
   amount: number
-  currency: string
+  currency: Currency
 }
 
 export interface DisbursementAccountLineRead extends DisbursementAccountLineCreate {
@@ -200,7 +215,7 @@ export interface DisbursementAccountCreate {
   voyage_id: number
   port: string
   pda_amount: number
-  pda_currency: string
+  pda_currency: Currency
   pda_date: string
 }
 
@@ -213,7 +228,6 @@ export interface DisbursementAccount extends DisbursementAccountCreate {
 }
 
 export type CostCategory = 'income' | 'expense'
-export type PaymentCurrency = 'RUB' | 'USD'
 export type PaymentStatus = 'draft' | 'pending' | 'invoiced' | 'partial' | 'paid' | 'overdue'
 
 export interface PaymentCreate {
@@ -225,7 +239,7 @@ export interface PaymentCreate {
   cost_category: CostCategory
   cost_type_name: string
 
-  original_currency: PaymentCurrency
+  original_currency: Currency
   original_amount: number
 
   invoice_date: string
@@ -246,7 +260,7 @@ export interface Payment extends PaymentCreate {
 }
 
 export interface PaymentWithDisplay extends Payment {
-  display_currency: PaymentCurrency
+  display_currency: Currency
   display_amount: number
 }
 
@@ -280,7 +294,7 @@ export interface VoyageEstimateCreate {
   estimated_cargo_quantity_mt: number
   estimated_rate: number
   estimated_rate_basis: RateBasis
-  currency: string
+  currency: Currency
   estimated_bunker_consumption_mt: number
   estimated_bunker_cost: number
   estimated_port_costs: number
@@ -345,7 +359,7 @@ export interface ClaimCreate {
   claim_type: ClaimType
   counterparty: string
   amount_claimed: number
-  currency: string
+  currency: Currency
   date_raised: string
   notes?: string | null
 }

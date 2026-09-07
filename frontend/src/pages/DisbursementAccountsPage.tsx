@@ -11,17 +11,28 @@ import {
 } from '../api/disbursementAccounts'
 import { listVoyages } from '../api/voyages'
 import Badge, { type BadgeTone } from '../components/ui/Badge'
-import type { DisbursementAccount, DisbursementAccountCreate, DisbursementAccountLineRead, Voyage } from '../api/types'
+import type {
+  Currency,
+  DisbursementAccount,
+  DisbursementAccountCreate,
+  DisbursementAccountLineRead,
+  Voyage,
+} from '../api/types'
 
 const EMPTY_FORM: DisbursementAccountCreate = {
   voyage_id: 0,
   port: '',
   pda_amount: 0,
-  pda_currency: '',
+  pda_currency: '' as Currency,
   pda_date: '',
 }
 
-const EMPTY_LINE_FORM = { line_type: 'pilotage', description: '', amount: '', currency: '' }
+const EMPTY_LINE_FORM: { line_type: string; description: string; amount: string; currency: Currency | '' } = {
+  line_type: 'pilotage',
+  description: '',
+  amount: '',
+  currency: '',
+}
 
 const STATUS_KEYS: Record<DisbursementAccount['status'], string> = {
   pda_only: 'disbursementAccounts.statusPdaOnly',
@@ -127,7 +138,7 @@ export default function DisbursementAccountsPage() {
         line_type: editLineForm.line_type,
         description: editLineForm.description,
         amount: Number(editLineForm.amount) || 0,
-        currency: editLineForm.currency,
+        currency: editLineForm.currency as Currency,
       })
       handleCancelEditLine()
       await refresh()
@@ -146,7 +157,7 @@ export default function DisbursementAccountsPage() {
           line_type: lineForm.line_type,
           description: lineForm.description,
           amount: Number(lineForm.amount) || 0,
-          currency: lineForm.currency,
+          currency: lineForm.currency as Currency,
         },
       ])
       setLineForms((f) => ({ ...f, [da.id]: EMPTY_LINE_FORM }))
@@ -279,11 +290,19 @@ export default function DisbursementAccountsPage() {
                                     </label>
                                     <label>
                                       {t('disbursementAccounts.currency')}
-                                      <input
+                                      <select
                                         value={editLineForm.currency}
-                                        onChange={(e) => setEditLineForm((f) => ({ ...f, currency: e.target.value }))}
+                                        onChange={(e) =>
+                                          setEditLineForm((f) => ({ ...f, currency: e.target.value as Currency }))
+                                        }
                                         required
-                                      />
+                                      >
+                                        <option value="" disabled>
+                                          {t('disbursementAccounts.selectCurrency')}
+                                        </option>
+                                        <option value="RUB">RUB</option>
+                                        <option value="USD">USD</option>
+                                      </select>
                                     </label>
                                     <button type="submit">{t('disbursementAccounts.saveLineButton')}</button>
                                     <button type="button" onClick={handleCancelEditLine}>
@@ -354,13 +373,22 @@ export default function DisbursementAccountsPage() {
                         </label>
                         <label>
                           {t('disbursementAccounts.currency')}
-                          <input
+                          <select
                             value={lineFormFor(da.id).currency}
                             onChange={(e) =>
-                              setLineForms((f) => ({ ...f, [da.id]: { ...lineFormFor(da.id), currency: e.target.value } }))
+                              setLineForms((f) => ({
+                                ...f,
+                                [da.id]: { ...lineFormFor(da.id), currency: e.target.value as Currency },
+                              }))
                             }
                             required
-                          />
+                          >
+                            <option value="" disabled>
+                              {t('disbursementAccounts.selectCurrency')}
+                            </option>
+                            <option value="RUB">RUB</option>
+                            <option value="USD">USD</option>
+                          </select>
                         </label>
                         <button type="submit">{t('disbursementAccounts.addLineButton')}</button>
                       </form>
@@ -399,7 +427,13 @@ export default function DisbursementAccountsPage() {
         </label>
         <label>
           {t('disbursementAccounts.pdaCurrency')}
-          <input value={form.pda_currency} onChange={field('pda_currency')} required />
+          <select value={form.pda_currency} onChange={field('pda_currency')} required>
+            <option value="" disabled>
+              {t('disbursementAccounts.selectCurrency')}
+            </option>
+            <option value="RUB">RUB</option>
+            <option value="USD">USD</option>
+          </select>
         </label>
         <label>
           {t('disbursementAccounts.pdaDate')}

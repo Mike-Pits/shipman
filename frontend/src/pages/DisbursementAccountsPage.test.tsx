@@ -84,7 +84,7 @@ describe('DisbursementAccountsPage', () => {
     await userEvent.selectOptions(screen.getByLabelText(/^voyage/i), '1')
     await user.type(screen.getByLabelText(/^port/i), 'Rotterdam')
     await user.type(screen.getByLabelText(/pda amount/i), '15000')
-    await user.type(screen.getByLabelText(/pda currency/i), 'USD')
+    await user.selectOptions(screen.getByLabelText(/pda currency/i), 'USD')
     await user.type(screen.getByLabelText(/pda date/i), '2026-06-05')
     await user.click(screen.getByRole('button', { name: /record pda/i }))
 
@@ -120,7 +120,7 @@ describe('DisbursementAccountsPage', () => {
 
     await user.type(screen.getByLabelText(/description/i), 'Inbound pilot')
     await user.type(screen.getByLabelText(/^amount/i), '3000')
-    await user.type(screen.getByLabelText(/^currency/i), 'USD')
+    await user.selectOptions(screen.getByLabelText(/^currency/i), 'USD')
     await user.click(screen.getByRole('button', { name: /add line/i }))
 
     expect(await screen.findByText('-12000')).toBeInTheDocument()

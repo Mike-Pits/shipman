@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.common import Currency
+
 ClaimType = Literal["cargo_quantity", "cargo_quality", "demurrage_dispute", "off_hire_dispute", "other"]
 ClaimStatus = Literal["open", "negotiating", "settled", "rejected"]
 
@@ -13,7 +15,7 @@ class ClaimCreate(BaseModel):
     claim_type: ClaimType
     counterparty: str
     amount_claimed: float
-    currency: str
+    currency: Currency
     date_raised: str
     notes: str | None = None
 
@@ -38,7 +40,7 @@ class ClaimRead(BaseModel):
     counterparty: str
     amount_claimed: float
     amount_settled: float | None
-    currency: str
+    currency: Currency
     status: ClaimStatus
     date_raised: str
     date_resolved: str | None

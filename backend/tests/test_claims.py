@@ -56,6 +56,25 @@ def test_operator_can_record_a_claim_linked_to_a_voyage(client):
     assert created["amount_settled"] is None
 
 
+def test_claim_rejects_a_currency_other_than_rub_or_usd(client):
+    voyage_id, fixture_id, _ = _create_voyage(client)
+
+    response = client.post(
+        "/claims",
+        json={
+            "voyage_id": voyage_id,
+            "fixture_id": fixture_id,
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd",
+            "amount_claimed": 15000,
+            "currency": "EUR",
+            "date_raised": "2026-06-15",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_claims_are_excluded_from_voyage_pnl_while_open(client):
     voyage_id, fixture_id, vessel_id = _create_voyage(client)
     client.post(

@@ -35,6 +35,12 @@ def test_operator_can_create_an_estimate_with_computed_tce(client):
     assert created["estimated_tce_per_day"] == 2000
 
 
+def test_estimate_rejects_a_currency_other_than_rub_or_usd(client):
+    response = client.post("/voyage-estimates", json=estimate_payload(currency="EUR"))
+
+    assert response.status_code == 422
+
+
 def test_operator_can_progress_an_estimate_through_negotiation_or_decline_it(client):
     created = client.post("/voyage-estimates", json=estimate_payload()).json()
 

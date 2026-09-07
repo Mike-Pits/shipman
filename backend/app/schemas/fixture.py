@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
+from app.schemas.common import Currency
 
 FixtureType = Literal["voyage_charter", "time_charter_out", "coa"]
 
@@ -19,7 +21,11 @@ class FixtureBrokerRead(FixtureBrokerCreate):
 class FixtureCreate(BaseModel):
     fixture_type: FixtureType
     charterer: str
-    contract_currency: str
+    contract_currency: Currency
+
+    date_concluded: str | None = None
+    charter_party_ref: str | None = Field(default=None, max_length=15)
+    charter_party_type: str | None = None
 
     # Voyage Charter fields (FR-07)
     freight_rate: float | None = None
@@ -39,7 +45,11 @@ class FixtureCreate(BaseModel):
     charter_period_from: str | None = None
     charter_period_to: str | None = None
     delivery_port: str | None = None
+    delivery_rob_ifo_mt: float | None = None
+    delivery_rob_mgo_mt: float | None = None
     redelivery_port: str | None = None
+    redelivery_rob_ifo_mt: float | None = None
+    redelivery_rob_mgo_mt: float | None = None
     redelivery_conditions: str | None = None
     hire_payment_basis: Literal["advance", "arrears", "days_after_invoice"] | None = None
     hire_payment_frequency_days: int | None = None
@@ -70,7 +80,11 @@ class FixtureRead(BaseModel):
     id: int
     fixture_type: FixtureType
     charterer: str
-    contract_currency: str
+    contract_currency: Currency
+
+    date_concluded: str | None = None
+    charter_party_ref: str | None = None
+    charter_party_type: str | None = None
 
     freight_rate: float | None = None
     freight_rate_basis: str | None = None
@@ -88,7 +102,11 @@ class FixtureRead(BaseModel):
     charter_period_from: str | None = None
     charter_period_to: str | None = None
     delivery_port: str | None = None
+    delivery_rob_ifo_mt: float | None = None
+    delivery_rob_mgo_mt: float | None = None
     redelivery_port: str | None = None
+    redelivery_rob_ifo_mt: float | None = None
+    redelivery_rob_mgo_mt: float | None = None
     redelivery_conditions: str | None = None
     hire_payment_basis: str | None = None
     hire_payment_frequency_days: int | None = None

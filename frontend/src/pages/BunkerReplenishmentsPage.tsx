@@ -6,7 +6,7 @@ import {
   updateBunkerReplenishment,
 } from '../api/bunkerReplenishments'
 import { listVessels } from '../api/vessels'
-import type { BunkerReplenishment, BunkerReplenishmentCreate, Vessel } from '../api/types'
+import type { BunkerReplenishment, BunkerReplenishmentCreate, Currency, Vessel } from '../api/types'
 
 const EMPTY_FORM: Omit<BunkerReplenishmentCreate, 'lines'> = {
   vessel_id: 0,
@@ -14,7 +14,7 @@ const EMPTY_FORM: Omit<BunkerReplenishmentCreate, 'lines'> = {
   port: '',
   supplier: '',
   invoice_number: '',
-  currency: '',
+  currency: '' as Currency,
 }
 
 type LineRow = { grade: string; labelKey: string; quantity: string; price: string }
@@ -214,7 +214,13 @@ export default function BunkerReplenishmentsPage() {
         </label>
         <label>
           {t('bunkers.currency')}
-          <input value={form.currency} onChange={field('currency')} required />
+          <select value={form.currency} onChange={field('currency')} required>
+            <option value="" disabled>
+              {t('bunkers.selectCurrency')}
+            </option>
+            <option value="RUB">RUB</option>
+            <option value="USD">USD</option>
+          </select>
         </label>
 
         <h3>{t('bunkers.linesHeading')}</h3>

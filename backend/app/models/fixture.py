@@ -12,6 +12,10 @@ class Fixture(Base):
     charterer: Mapped[str] = mapped_column(String, nullable=False)
     contract_currency: Mapped[str] = mapped_column(String, nullable=False)
 
+    date_concluded: Mapped[str | None] = mapped_column(String, nullable=True)
+    charter_party_ref: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    charter_party_type: Mapped[str | None] = mapped_column(String, nullable=True)
+
     # Voyage Charter fields (FR-07)
     freight_rate: Mapped[float | None] = mapped_column(Float, nullable=True)
     freight_rate_basis: Mapped[str | None] = mapped_column(String, nullable=True)
@@ -30,7 +34,11 @@ class Fixture(Base):
     charter_period_from: Mapped[str | None] = mapped_column(String, nullable=True)
     charter_period_to: Mapped[str | None] = mapped_column(String, nullable=True)
     delivery_port: Mapped[str | None] = mapped_column(String, nullable=True)
+    delivery_rob_ifo_mt: Mapped[float | None] = mapped_column(Float, nullable=True)
+    delivery_rob_mgo_mt: Mapped[float | None] = mapped_column(Float, nullable=True)
     redelivery_port: Mapped[str | None] = mapped_column(String, nullable=True)
+    redelivery_rob_ifo_mt: Mapped[float | None] = mapped_column(Float, nullable=True)
+    redelivery_rob_mgo_mt: Mapped[float | None] = mapped_column(Float, nullable=True)
     redelivery_conditions: Mapped[str | None] = mapped_column(String, nullable=True)
     hire_payment_basis: Mapped[str | None] = mapped_column(String, nullable=True)
     hire_payment_frequency_days: Mapped[int | None] = mapped_column(Integer, nullable=True)

@@ -14,9 +14,28 @@ from app.services.currency import convert_to_rub
 
 router = APIRouter(prefix="/fixtures", tags=["fixtures"])
 
+# Delivery/redelivery are contractually timestamps, not just dates — hire runs from the
+# exact time of delivery to the exact time of redelivery, so the final installment is
+# routinely a partial day. Accept a bare date too (assumed midnight) for fixtures that
+# genuinely don't need that precision, and tolerate a trailing seconds field either way.
+_CHARTER_DATETIME_FORMATS = ("%Y-%m-%d %H:%M:%S", "%Y-%m-%d %H:%M", "%Y-%m-%d")
+
+
+def _parse_charter_datetime(value: str) -> datetime:
+    for fmt in _CHARTER_DATETIME_FORMATS:
+        try:
+            return datetime.strptime(value, fmt)
+        except ValueError:
+            continue
+    raise HTTPException(
+        status_code=422,
+        detail=f"Could not parse charter period date/time: {value!r}",
+    )
+
 
 class GenerateHireInstallmentsRequest(BaseModel):
     vessel_id: int
+    invoice_date_override: str | None = None
 
 
 @router.post("", response_model=FixtureRead, status_code=201)
@@ -77,27 +96,42 @@ def generate_hire_installments(
     if db.get(Vessel, payload.vessel_id) is None:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    period_start = datetime.strptime(fixture.charter_period_from, "%Y-%m-%d").date()
-    period_end = datetime.strptime(fixture.charter_period_to, "%Y-%m-%d").date()
+    period_start = _parse_charter_datetime(fixture.charter_period_from)
+    period_end = _parse_charter_datetime(fixture.charter_period_to)
     daily_rate = (
         fixture.hire_rate if fixture.hire_rate_basis == "daily" else fixture.hire_rate / 30
     )
+
+    # For "days_after_invoice" terms, the invoice date isn't derivable from the charter
+    # schedule at all — it's whenever the owner actually issues the invoice. Operators can
+    # anchor the whole installment schedule to the real first-invoice date instead of the
+    # period-start default; advance/arrears dates are contractually fixed to the period
+    # boundary and aren't affected by this override. This shift is date-only — invoice/due
+    # dates on a Payment are accounting dates and don't carry a time of day.
+    invoice_date_shift = timedelta(0)
+    if payload.invoice_date_override is not None and fixture.hire_payment_basis == "days_after_invoice":
+        override_date = datetime.strptime(payload.invoice_date_override, "%Y-%m-%d").date()
+        invoice_date_shift = override_date - period_start.date()
 
     installments: list[Payment] = []
     current = period_start
     frequency = timedelta(days=fixture.hire_payment_frequency_days)
     while current < period_end:
+        # current + frequency preserves the delivery time-of-day at each boundary (a "hire
+        # day" runs delivery-time to delivery-time); min(..., period_end) truncates the
+        # final chunk to the actual redelivery timestamp, so a partial final day is prorated
+        # to the hour rather than rounded to a whole day.
         chunk_end = min(current + frequency, period_end)
-        duration_days = (chunk_end - current).days
+        duration_days = (chunk_end - current).total_seconds() / 86400
         amount = round(daily_rate * duration_days, 2)
 
         if fixture.hire_payment_basis == "advance":
-            invoice_date, due_date = current, current
+            invoice_date, due_date = current.date(), current.date()
         elif fixture.hire_payment_basis == "arrears":
-            invoice_date, due_date = chunk_end, chunk_end
+            invoice_date, due_date = chunk_end.date(), chunk_end.date()
         else:  # days_after_invoice
-            invoice_date = current
-            due_date = current + timedelta(days=fixture.hire_payment_days_after_invoice)
+            invoice_date = current.date() + invoice_date_shift
+            due_date = invoice_date + timedelta(days=fixture.hire_payment_days_after_invoice)
 
         rub_equivalent, rate_used, rate_date = convert_to_rub(
             db, fixture.contract_currency, amount, invoice_date.isoformat()

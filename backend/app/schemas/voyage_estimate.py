@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
+from app.schemas.common import Currency
+
 EstimateStatus = Literal["draft", "under_negotiation", "fixed", "declined"]
 RateBasis = Literal["per_tonne", "lump_sum"]
 
@@ -16,7 +18,7 @@ class VoyageEstimateCreate(BaseModel):
     estimated_cargo_quantity_mt: float
     estimated_rate: float
     estimated_rate_basis: RateBasis
-    currency: str
+    currency: Currency
     estimated_bunker_consumption_mt: float
     estimated_bunker_cost: float
     estimated_port_costs: float
@@ -40,7 +42,7 @@ class VoyageEstimateRead(BaseModel):
     estimated_cargo_quantity_mt: float
     estimated_rate: float
     estimated_rate_basis: RateBasis
-    currency: str
+    currency: Currency
     estimated_bunker_consumption_mt: float
     estimated_bunker_cost: float
     estimated_port_costs: float

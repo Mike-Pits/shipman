@@ -88,7 +88,7 @@ describe('VoyageEstimatesPage', () => {
     await user.type(screen.getByLabelText(/cargo quantity/i), '5000')
     await user.type(screen.getByLabelText(/^rate$/i), '30')
     await userEvent.selectOptions(screen.getByLabelText(/rate basis/i), 'per_tonne')
-    await user.type(screen.getByLabelText(/^currency/i), 'USD')
+    await user.selectOptions(screen.getByLabelText(/^currency/i), 'USD')
     await user.type(screen.getByLabelText(/bunker consumption/i), '200')
     await user.type(screen.getByLabelText(/bunker cost/i), '110000')
     await user.type(screen.getByLabelText(/port costs/i), '20000')

@@ -2,6 +2,8 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, computed_field
 
+from app.schemas.common import Currency
+
 DisbursementAccountStatus = Literal["pda_only", "fda_pending", "reconciled", "disputed"]
 
 
@@ -9,7 +11,7 @@ class DisbursementAccountLineCreate(BaseModel):
     line_type: str
     description: str
     amount: float
-    currency: str
+    currency: Currency
 
 
 class DisbursementAccountLineRead(DisbursementAccountLineCreate):
@@ -22,7 +24,7 @@ class DisbursementAccountCreate(BaseModel):
     voyage_id: int
     port: str
     pda_amount: float
-    pda_currency: str
+    pda_currency: Currency
     pda_date: str
 
 
@@ -37,7 +39,7 @@ class DisbursementAccountRead(BaseModel):
     voyage_id: int
     port: str
     pda_amount: float
-    pda_currency: str
+    pda_currency: Currency
     pda_date: str
     status: DisbursementAccountStatus
     lines: list[DisbursementAccountLineRead]

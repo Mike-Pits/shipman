@@ -88,7 +88,7 @@ describe('ClaimsPage', () => {
     await userEvent.selectOptions(screen.getByLabelText(/claim type/i), 'cargo_quantity')
     await user.type(screen.getByLabelText(/counterparty/i), 'Rotterdam Terminal Ltd')
     await user.type(screen.getByLabelText(/amount claimed/i), '15000')
-    await user.type(screen.getByLabelText(/^currency/i), 'USD')
+    await user.selectOptions(screen.getByLabelText(/^currency/i), 'USD')
     await user.type(screen.getByLabelText(/date raised/i), '2026-06-15')
     await user.click(screen.getByRole('button', { name: /record claim/i }))
 

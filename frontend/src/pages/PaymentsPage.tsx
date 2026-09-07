@@ -5,9 +5,9 @@ import { listVessels } from '../api/vessels'
 import { listVoyages } from '../api/voyages'
 import type {
   CostCategory,
+  Currency,
   Payment,
   PaymentCreate,
-  PaymentCurrency,
   PaymentStatus,
   Vessel,
   Voyage,
@@ -19,7 +19,7 @@ const EMPTY_FORM: PaymentCreate = {
   vendor_name: '',
   cost_category: '' as CostCategory,
   cost_type_name: '',
-  original_currency: '' as PaymentCurrency,
+  original_currency: '' as Currency,
   original_amount: 0,
   invoice_date: '',
   due_date: '',
@@ -38,7 +38,7 @@ const STATUS_KEYS: Record<PaymentStatus, string> = {
 }
 
 const STATUS_OPTIONS: PaymentStatus[] = ['draft', 'pending', 'invoiced', 'partial', 'paid', 'overdue']
-const OTHER_CURRENCY: Record<PaymentCurrency, PaymentCurrency> = { RUB: 'USD', USD: 'RUB' }
+const OTHER_CURRENCY: Record<Currency, Currency> = { RUB: 'USD', USD: 'RUB' }
 
 export default function PaymentsPage() {
   const { t } = useTranslation()
@@ -48,7 +48,7 @@ export default function PaymentsPage() {
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<PaymentCreate>(EMPTY_FORM)
   const [error, setError] = useState<string | null>(null)
-  const [displayAmounts, setDisplayAmounts] = useState<Record<number, { currency: PaymentCurrency; amount: number }>>({})
+  const [displayAmounts, setDisplayAmounts] = useState<Record<number, { currency: Currency; amount: number }>>({})
   const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listPayments().then(setPayments)

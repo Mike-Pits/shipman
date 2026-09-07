@@ -65,6 +65,28 @@ def test_operator_can_create_a_time_charter_out_fixture_with_configured_payment_
     assert advance_response.json()["hire_payment_basis"] == "advance"
 
 
+def test_time_charter_out_fixture_records_delivery_and_redelivery_rob(client):
+    payload = time_charter_out_payload(
+        delivery_rob_ifo_mt=450.5,
+        delivery_rob_mgo_mt=30.0,
+        redelivery_rob_ifo_mt=200.0,
+        redelivery_rob_mgo_mt=15.25,
+    )
+
+    create_response = client.post("/fixtures", json=payload)
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["delivery_rob_ifo_mt"] == 450.5
+    assert created["delivery_rob_mgo_mt"] == 30.0
+    assert created["redelivery_rob_ifo_mt"] == 200.0
+    assert created["redelivery_rob_mgo_mt"] == 15.25
+
+    fetched = client.get(f"/fixtures/{created['id']}").json()
+    assert fetched["delivery_rob_ifo_mt"] == 450.5
+    assert fetched["redelivery_rob_mgo_mt"] == 15.25
+
+
 def coa_payload(**overrides):
     payload = {
         "fixture_type": "coa",
@@ -124,6 +146,41 @@ def test_fixture_rejects_a_fourth_broker(client):
             {"broker_name": "Broker D", "commission_percentage": 1.0},
         ]
     )
+
+    response = client.post("/fixtures", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_fixture_records_date_concluded_and_charter_party_details(client):
+    payload = voyage_charter_payload(
+        date_concluded="2026-08-15",
+        charter_party_ref="CP-2026-0042",
+        charter_party_type="ASBATANKVOY",
+    )
+
+    create_response = client.post("/fixtures", json=payload)
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["date_concluded"] == "2026-08-15"
+    assert created["charter_party_ref"] == "CP-2026-0042"
+    assert created["charter_party_type"] == "ASBATANKVOY"
+
+    fetched = client.get(f"/fixtures/{created['id']}").json()
+    assert fetched["charter_party_ref"] == "CP-2026-0042"
+
+
+def test_fixture_rejects_a_contract_currency_other_than_rub_or_usd(client):
+    payload = voyage_charter_payload(contract_currency="EUR")
+
+    response = client.post("/fixtures", json=payload)
+
+    assert response.status_code == 422
+
+
+def test_fixture_charter_party_ref_rejects_more_than_15_characters(client):
+    payload = voyage_charter_payload(charter_party_ref="THIS-REF-IS-WAY-TOO-LONG")
 
     response = client.post("/fixtures", json=payload)
 

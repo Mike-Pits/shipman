@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { createClaim, listClaims, settleClaim, updateClaim, updateClaimStatus } from '../api/claims'
 import { listVoyages } from '../api/voyages'
 import Badge, { type BadgeTone } from '../components/ui/Badge'
-import type { Claim, ClaimCreate, ClaimStatus, ClaimType, Voyage } from '../api/types'
+import type { Claim, ClaimCreate, ClaimStatus, ClaimType, Currency, Voyage } from '../api/types'
 
 const EMPTY_FORM: ClaimCreate = {
   voyage_id: null,
@@ -12,7 +12,7 @@ const EMPTY_FORM: ClaimCreate = {
   claim_type: '' as ClaimType,
   counterparty: '',
   amount_claimed: 0,
-  currency: '',
+  currency: '' as Currency,
   date_raised: '',
   notes: '',
 }
@@ -239,7 +239,13 @@ export default function ClaimsPage() {
         </label>
         <label>
           {t('claims.currency')}
-          <input value={form.currency} onChange={field('currency')} required />
+          <select value={form.currency} onChange={field('currency')} required>
+            <option value="" disabled>
+              {t('claims.selectCurrency')}
+            </option>
+            <option value="RUB">RUB</option>
+            <option value="USD">USD</option>
+          </select>
         </label>
         <label>
           {t('claims.dateRaised')}

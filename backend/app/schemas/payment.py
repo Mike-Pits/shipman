@@ -2,8 +2,9 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict
 
+from app.schemas.common import Currency
+
 CostCategory = Literal["income", "expense"]
-Currency = Literal["RUB", "USD"]
 PaymentStatus = Literal["draft", "pending", "invoiced", "partial", "paid", "overdue"]
 
 
