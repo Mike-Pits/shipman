@@ -10,6 +10,7 @@ from app.models.vessel import Vessel
 from app.models.voyage import Voyage
 from app.schemas.off_hire_period import OffHirePeriodCreate, OffHirePeriodRead
 from app.schemas.voyage import VoyageCreate, VoyageRead
+from app.services.vat import apply_vat
 from app.services.vetting import is_vetting_unfixable
 
 router = APIRouter(prefix="/voyages", tags=["voyages"])
@@ -96,7 +97,9 @@ def _calculated_deduction(fixture: Fixture, payload: OffHirePeriodCreate) -> flo
     start = datetime.strptime(payload.start_datetime, "%Y-%m-%d %H:%M:%S")
     end = datetime.strptime(payload.end_datetime, "%Y-%m-%d %H:%M:%S")
     duration_days = (end - start).total_seconds() / 86400
-    return round(_daily_hire_rate(fixture) * duration_days, 2)
+    # off-hire deducts hire that would otherwise have been earned (and invoiced) for that
+    # time, so the deduction is computed on the same VAT basis as the hire installments
+    return apply_vat(round(_daily_hire_rate(fixture) * duration_days, 2), fixture)
 
 
 @router.post(

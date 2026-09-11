@@ -91,6 +91,14 @@ export default function VoyageReportsPage() {
                 <th>{t('voyageReports.currency')}</th>
                 <td>{pnl.currency}</td>
               </tr>
+              <tr>
+                <th>{t('voyageReports.invoicedRevenue')}</th>
+                <td>{pnl.invoiced_revenue}</td>
+              </tr>
+              <tr>
+                <th>{t('voyageReports.varianceVsInvoiced')}</th>
+                <td>{pnl.variance_vs_invoiced}</td>
+              </tr>
               {pnl.estimated_net_result !== undefined && (
                 <tr>
                   <th>{t('voyageReports.estimatedNetResult')}</th>

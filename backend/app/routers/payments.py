@@ -1,7 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Response
 from sqlalchemy.orm import Session
 
 from app.database import get_db
+from app.models.claim import Claim
+from app.models.invoice import Invoice
 from app.models.payment import Payment
 from app.models.vessel import Vessel
 from app.schemas.payment import (
@@ -62,6 +64,34 @@ def update_payment(payment_id: int, payload: PaymentCreate, db: Session = Depend
     db.commit()
     db.refresh(payment)
     return payment
+
+
+@router.delete("/{payment_id}", status_code=204)
+def delete_payment(payment_id: int, db: Session = Depends(get_db)):
+    payment = db.get(Payment, payment_id)
+    if payment is None:
+        raise HTTPException(status_code=404, detail="Payment not found")
+
+    if db.query(Claim).filter(Claim.settled_payment_id == payment_id).first() is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Cannot delete payment: it is linked to a settled claim. "
+            "Remove that link first.",
+        )
+
+    linking_invoice = (
+        db.query(Invoice).filter(Invoice.payment_id == payment_id, Invoice.status == "issued").first()
+    )
+    if linking_invoice is not None:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Cannot delete payment: it settles invoice {linking_invoice.invoice_number}. "
+            "Void that invoice instead.",
+        )
+
+    db.delete(payment)
+    db.commit()
+    return Response(status_code=204)
 
 
 @router.post("/{payment_id}/status", response_model=PaymentRead)

@@ -33,6 +33,7 @@ This document supersedes [`SRS.md`](SRS.md) (v1, general-cargo/bulk fleet). It i
    4.13 Dashboard
    4.14 Reports Module
    4.15 Audit Log
+   4.16 Invoicing
 5. Data Dictionary
 6. Non-Functional Requirements
 7. User Interface Requirements
@@ -168,6 +169,8 @@ Multi-user roles (Master with vessel-scoped daily-report access, Finance read-on
 
 **FR-06:** System shall record Fixtures of three types: **Voyage Charter**, **Time Charter Out**, **COA**. Time Charter In is not supported (this operator does not charter tonnage in). Every Fixture, regardless of type, also carries three universal fields: **date concluded** (the date the deal was struck), **charter party reference** (the deal's ref/C-P number, up to 15 characters), and **charter party type** (the proforma document used, e.g. ASBATANKVOY, SHELLVOY6, GENCON — free text). All three are optional to accommodate historical fixtures where this detail wasn't recorded.
 
+**FR-06a:** Every Fixture also carries VAT (НДС) terms for its rate (freight, hire, or rate per tonne), regardless of type or currency: a **VAT-applicable** toggle (default off), and — only when applicable — a **treatment** (rate already **includes** VAT, or VAT is **added on top** of the stated rate) and an operator-entered **VAT rate %** (not hardcoded, since the rate is set by tax law and has changed over time; 0% is a valid entry for zero-rated transactions). Where the system automatically turns a fixture's rate into a monetary amount — off-hire deduction (FR-35) — "added on top" terms increase the computed amount by the VAT rate; "included" terms leave it unchanged, since the agreed rate is already the final figure. Hire and Freight invoices (§4.16, FR-60) read these terms directly when computing an invoice total; for other manually-entered payments the operator applies them by hand.
+
 **FR-07:** Voyage Charter fixture fields: charterer, freight rate (per tonne or lump sum), laycan, load/discharge ports, cargo/grade, demurrage rate, despatch rate, laytime terms, contract currency.
 
 **FR-08:** Time Charter Out fixture fields: charterer, hire rate (daily/monthly), charter period (from/to or min-max duration), delivery/redelivery ports and conditions, delivery ROB and redelivery ROB (remaining bunkers on board, IFO and MGO in MT, each optional), contract currency, and **hire payment terms** — operator-defined at fixture creation, not assumed by the system. Payment terms capture the billing basis (e.g. in advance, in arrears, or a fixed number of days after invoice date) and billing frequency (e.g. every 15 or 30 days); the system does not hardcode a single payment convention. Charter period from/to are delivery and redelivery **timestamps**, not bare dates — hire runs from the exact time of delivery to the exact time of redelivery, so the final hire installment is routinely a partial day and must be prorated to the hour, not rounded to a whole day (see FR-34). A bare date is still accepted (assumed midnight) for fixtures that genuinely don't need that precision.
@@ -242,7 +245,7 @@ System shall maintain a **folder↔vessel registry**: the vessel a folder is pol
 
 **FR-33:** Payments link to: vessel (required), voyage (optional), fixture (optional), vendor (for expenses, optional), cost type, DA (optional, for reconciled port-cost payments).
 
-**FR-34:** For Time Charter Out fixtures, the system shall generate hire payment installments **according to the fixture's configured payment terms (FR-08)** — supporting advance billing, arrears billing, and fixed-days-after-invoice-date terms — rather than assuming a single fixed billing basis. Triggered from the Fixtures page (vessel selection required); for fixed-days-after-invoice-date terms, the operator may optionally anchor the schedule to the real first invoice date rather than accepting the period-start default — the whole installment schedule shifts by that offset (this shift is date-only; a Payment's invoice/due dates never carry a time of day). Each installment boundary is computed from the delivery timestamp forward (preserving its time of day), so the final installment is prorated to the exact hour of redelivery rather than rounded to a whole day. Generated installments are ordinary Payment records (FR-33) and remain editable afterward on the Payments page like any other payment.
+**FR-34:** For Time Charter Out fixtures, hire due is recorded as ordinary Payment records (FR-33) — cost category `income`, cost type "Hire". A Hire invoice (§4.16) issued against the fixture creates this Payment automatically to match the fixture's configured payment terms (FR-08: advance, arrears, or fixed-days-after-invoice-date billing); it may also still be entered directly on the Payments page without an invoice. *(An earlier iteration auto-generated bulk installments straight from the fixture terms with no invoice document at all; that approach was removed as unneeded in favor of the Invoicing module.)*
 
 ### 4.10 Off-Hire Tracking
 
@@ -298,9 +301,35 @@ All reports generated on-demand, exportable to Excel — matches v1's approach.
 
 ### 4.15 Audit Log
 
-**FR-55:** Audit log shall record changes to: daily reports, fixtures, voyages, voyage estimates, payments, disbursement accounts, bunker replenishments, vetting records, claims, exchange rate manual overrides.
+**FR-55:** Audit log shall record changes to: daily reports, fixtures, voyages, voyage estimates, payments, disbursement accounts, bunker replenishments, vetting records, claims, invoices, exchange rate manual overrides.
 
 **FR-56:** Audit log shall **not** record changes to vessels (specifications) or system configuration.
+
+### 4.16 Invoicing
+
+This is an internal payment-request document (Russian **«Счёт»**), not a legally compliant fiscal VAT document (**«Счёт-фактура»**, Tax Code Art. 169) — it carries no INN/KPP, legal-address, or signature-block fields, and makes no claim to being the operator's official tax document. It replaces the automatic hire-installment generation described in FR-34's historical note.
+
+**FR-57:** System shall record Invoices of four types — **Hire**, **Freight**, **Demurrage**, **Free-form** — each a header plus one or more line items (description, quantity, unit, unit price, amount). Amount is negative for a deduction line (brokerage), positive otherwise.
+
+**FR-58:** Invoice lifecycle: `draft` (freely editable and deletable) → `issued` (locked — no further editing; assigns the invoice number and creates the linked Payment, FR-61) → `void` (retires the invoice permanently; deletes the linked Payment and, if the invoice had auto-settled a Claim, FR-64, reverts that Claim to `negotiating`). Correcting an issued invoice means voiding it and issuing a fresh replacement — there is no direct edit-after-issue path.
+
+**FR-59:** Invoice numbers are assigned only at issuance, from **one sequence shared across all four types**, per calendar year (`INV-<year>-<0001>`). A voided invoice's number is never reused.
+
+**FR-60:** Currency and VAT terms (FR-06a) are **inherited and locked** from the invoice's linked Fixture for Hire/Freight/Demurrage types. Free-form invoices carry their own VAT fields (applicable/treatment/rate) and free-typed counterparty and currency, since they have no Fixture to inherit from.
+
+**FR-61:** Issuing an invoice creates **exactly one** linked Payment (FR-33) — `cost_category` `income`, status `invoiced`, amount equal to the invoice's total due, dated the invoice's date of issue. One invoice settles via one Payment (no split/partial-payment reconciliation); the operator corrects that Payment's amount and status as money actually arrives, same as any other payment. A Payment linked to a still-issued invoice cannot be deleted directly (FR-33) — void the invoice instead.
+
+**FR-62:** Type-specific fields and line generation:
+- **Hire** — links to a Time Charter Out Fixture and an explicit vessel (no Voyage link). Operator enters a free-typed billing period (`hire_period_start`/`hire_period_end`), carrying the same timestamp precision as `charter_period_from/to` (FR-08) so a partial final day prorates to the hour. System generates one "Hire" line (quantity = period days, price = the fixture's daily-equivalent hire rate).
+- **Freight** — links to a Voyage (vessel and fixture follow from it); covers both Voyage Charter (`freight_rate`/`freight_rate_basis`) and COA (`rate_per_tonne`) fixtures, auto-selecting the correct rate field. System generates one "Freight" line (quantity/unit = cargo tonnage and MT for per-tonne/COA rates, or 1/lump sum for a lump-sum freight rate).
+- **Demurrage** — links to a Voyage and, optionally, a `demurrage_dispute` Claim (FR-36). No laytime/Statement-of-Facts calculation engine exists — the operator manually enters the line(s) (days × rate, or any other manual breakdown).
+- **Free-form** — links to an explicit vessel (required) and, optionally, a Voyage. Requires a `subject` (becomes the linked Payment's cost type). All lines are manually entered by the operator.
+
+**FR-63:** Brokerage (FR-11): for **Hire and Freight** invoices only, each broker on the linked fixture generates its own deduction line (`amount = −gross line total × commission_percentage / 100`), always included when the fixture has brokers. VAT is computed on the **gross** revenue line(s) only — brokerage deductions do not shrink the VAT base — so `Total Amount Due = gross line total(s) + VAT(gross) − Σ brokerage deductions`. Demurrage and free-form invoices carry no automatic brokerage.
+
+**FR-64:** A Demurrage invoice linked to a Claim auto-settles that Claim on issue (sets its status to `settled`, `amount_settled` to the invoice total, `settled_payment_id` to the invoice's Payment) and un-settles it on void (FR-58) — the Claim and the invoice stay in sync automatically rather than needing two independent update actions.
+
+**FR-65:** Voyage P&L (FR-47) and Fleet P&L (FR-49) each display an additional **Invoiced Revenue** figure — the sum of `issued` invoices' billed total (in RUB, frozen at issue time) for that voyage or date range — alongside a **Variance vs. Invoiced** (`Revenue − Invoiced Revenue`). Revenue itself remains exactly as before (FR-30, Payment-driven); this is a display-only addition surfacing the gap between what was billed and what the corresponding Payment currently reflects as collected.
 
 **FR-57:** Audit log stores: user, timestamp, table, record ID, action, old values (JSON), new values (JSON).
 

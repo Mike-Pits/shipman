@@ -1,4 +1,4 @@
-from sqlalchemy import Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Float, ForeignKey, Integer, String
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
 from app.database import Base
@@ -11,6 +11,13 @@ class Fixture(Base):
     fixture_type: Mapped[str] = mapped_column(String, nullable=False)
     charterer: Mapped[str] = mapped_column(String, nullable=False)
     contract_currency: Mapped[str] = mapped_column(String, nullable=False)
+
+    # VAT terms apply to whichever rate the fixture type carries (freight, hire, or
+    # rate per tonne) — recorded here rather than per-rate since a fixture has exactly
+    # one commercial rate and one VAT treatment for it, regardless of type.
+    vat_applicable: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    vat_treatment: Mapped[str | None] = mapped_column(String, nullable=True)
+    vat_rate_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     date_concluded: Mapped[str | None] = mapped_column(String, nullable=True)
     charter_party_ref: Mapped[str | None] = mapped_column(String(15), nullable=True)

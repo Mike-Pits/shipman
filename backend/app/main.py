@@ -9,6 +9,7 @@ from app.routers import (
     disbursement_accounts,
     exchange_rates,
     fixtures,
+    invoices,
     payments,
     reports,
     vessels,
@@ -33,4 +34,5 @@ app.include_router(payments.router)
 app.include_router(reports.router)
 app.include_router(voyage_estimates.router)
 app.include_router(claims.router)
+app.include_router(invoices.router)
 app.include_router(audit_log.router)

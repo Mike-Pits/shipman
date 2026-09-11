@@ -244,6 +244,64 @@ def test_correcting_a_payment_preserves_its_status(client):
     assert response.json()["status"] == "paid"
 
 
+def test_operator_can_delete_a_payment(client):
+    vessel_id = _create_vessel(client)
+    created = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "expense",
+            "cost_type_name": "Bunkers",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+
+    response = client.delete(f"/payments/{created['id']}")
+
+    assert response.status_code == 204
+    assert client.get(f"/payments/{created['id']}").status_code == 404
+    assert created["id"] not in [p["id"] for p in client.get("/payments").json()]
+
+
+def test_deleting_an_unknown_payment_returns_404(client):
+    response = client.delete("/payments/999999")
+
+    assert response.status_code == 404
+
+
+def test_deleting_a_payment_settling_a_claim_is_rejected(client):
+    vessel_id = _create_vessel(client)
+    payment = client.post(
+        "/payments",
+        json={
+            "vessel_id": vessel_id,
+            "cost_category": "income",
+            "cost_type_name": "Freight",
+            "original_currency": "RUB",
+            "original_amount": 50000,
+            "invoice_date": "2026-06-01",
+        },
+    ).json()
+    claim = client.post(
+        "/claims",
+        json={
+            "claim_type": "cargo_quantity",
+            "counterparty": "Rotterdam Terminal Ltd",
+            "amount_claimed": 15000,
+            "currency": "RUB",
+            "date_raised": "2026-06-15",
+        },
+    ).json()
+    client.post(f"/claims/{claim['id']}/settle", json={"amount_settled": 15000, "payment_id": payment["id"]})
+
+    response = client.delete(f"/payments/{payment['id']}")
+
+    assert response.status_code == 409
+    assert client.get(f"/payments/{payment['id']}").status_code == 200
+
+
 def test_correcting_a_payment_for_an_unknown_vessel_is_rejected(client):
     vessel_id = _create_vessel(client)
     created = client.post(

@@ -203,4 +203,46 @@ describe('PaymentsPage', () => {
 
     expect(await screen.findByText('Port Charges (corrected)')).toBeInTheDocument()
   })
+
+  it('lets the operator delete a payment after confirming, and removes it from the list', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const fetchMock = mockFetchByUrl({
+      '/payments': [
+        { status: 200, body: [SAMPLE_PAYMENT] },
+        { status: 204, body: undefined },
+        { status: 200, body: [] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/voyages': [{ status: 200, body: [] }],
+    })
+
+    render(<PaymentsPage />)
+    await waitFor(() => expect(screen.getAllByText('MV Arctic').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    expect(window.confirm).toHaveBeenCalled()
+    await waitFor(() => expect(screen.queryByText('Port Charges')).not.toBeInTheDocument())
+    const deleteCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'DELETE')
+    expect(deleteCall?.[0]).toContain('/payments/1')
+  })
+
+  it('does not delete the payment when the operator cancels the confirmation', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(false)
+    const fetchMock = mockFetchByUrl({
+      '/payments': [{ status: 200, body: [SAMPLE_PAYMENT] }],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/voyages': [{ status: 200, body: [] }],
+    })
+
+    render(<PaymentsPage />)
+    await waitFor(() => expect(screen.getAllByText('MV Arctic').length).toBeGreaterThan(0))
+
+    await user.click(screen.getByRole('button', { name: /delete/i }))
+
+    expect(fetchMock.mock.calls.some(([, options]) => options?.method === 'DELETE')).toBe(false)
+    expect(screen.getByText('Port Charges')).toBeInTheDocument()
+  })
 })

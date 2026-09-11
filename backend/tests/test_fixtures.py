@@ -65,6 +65,40 @@ def test_operator_can_create_a_time_charter_out_fixture_with_configured_payment_
     assert advance_response.json()["hire_payment_basis"] == "advance"
 
 
+def test_fixture_records_vat_terms_when_applicable(client):
+    payload = time_charter_out_payload(vat_applicable=True, vat_treatment="exclusive", vat_rate_percent=20)
+
+    create_response = client.post("/fixtures", json=payload)
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["vat_applicable"] is True
+    assert created["vat_treatment"] == "exclusive"
+    assert created["vat_rate_percent"] == 20
+
+    fetched = client.get(f"/fixtures/{created['id']}").json()
+    assert fetched["vat_applicable"] is True
+    assert fetched["vat_treatment"] == "exclusive"
+
+
+def test_fixture_defaults_to_vat_not_applicable(client):
+    create_response = client.post("/fixtures", json=time_charter_out_payload())
+
+    assert create_response.status_code == 201
+    created = create_response.json()
+    assert created["vat_applicable"] is False
+    assert created["vat_treatment"] is None
+    assert created["vat_rate_percent"] is None
+
+
+def test_fixture_requires_vat_treatment_and_rate_when_vat_is_applicable(client):
+    payload = time_charter_out_payload(vat_applicable=True)
+
+    response = client.post("/fixtures", json=payload)
+
+    assert response.status_code == 422
+
+
 def test_time_charter_out_fixture_records_delivery_and_redelivery_rob(client):
     payload = time_charter_out_payload(
         delivery_rob_ifo_mt=450.5,

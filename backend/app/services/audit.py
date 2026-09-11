@@ -83,6 +83,7 @@ def register_audit_listener() -> None:
     from app.models.daily_report import DailyReport
     from app.models.disbursement_account import DisbursementAccount
     from app.models.fixture import Fixture
+    from app.models.invoice import Invoice
     from app.models.payment import Payment
     from app.models.vetting_inspection import VettingInspection
     from app.models.voyage import Voyage
@@ -98,6 +99,7 @@ def register_audit_listener() -> None:
         BunkerReplenishment,
         VettingInspection,
         Claim,
+        Invoice,
     ]
 
     for model_cls in audited_models:

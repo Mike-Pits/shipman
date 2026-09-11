@@ -47,10 +47,16 @@ export interface FixtureBrokerRead extends FixtureBroker {
   id: number
 }
 
+export type VatTreatment = 'inclusive' | 'exclusive'
+
 export interface FixtureCreate {
   fixture_type: FixtureType
   charterer: string
   contract_currency: Currency
+
+  vat_applicable: boolean
+  vat_treatment?: VatTreatment
+  vat_rate_percent?: number
 
   date_concluded?: string
   charter_party_ref?: string
@@ -99,11 +105,6 @@ export interface FixtureCreate {
 export interface Fixture extends FixtureCreate {
   id: number
   brokers: FixtureBrokerRead[]
-}
-
-export interface GenerateHireInstallmentsRequest {
-  vessel_id: number
-  invoice_date_override?: string
 }
 
 export interface VoyageCreate {
@@ -270,6 +271,8 @@ export interface VoyagePnl {
   costs: number
   net_result: number
   currency: string
+  invoiced_revenue: number
+  variance_vs_invoiced: number
   estimated_net_result?: number
   variance_vs_estimate?: number
 }
@@ -378,6 +381,8 @@ export interface FleetPnl {
   revenue: number
   costs: number
   net_result: number
+  invoiced_revenue: number
+  variance_vs_invoiced: number
   voyage_count: number
   currency: string
 }
@@ -419,4 +424,60 @@ export interface AuditLogEntry {
   new_values: string | null
   user: string
   timestamp: string
+}
+
+export type InvoiceType = 'hire' | 'freight' | 'demurrage' | 'free_form'
+export type InvoiceStatus = 'draft' | 'issued' | 'void'
+
+export interface InvoiceLineInput {
+  description: string
+  quantity: number
+  unit: string
+  unit_price: number
+}
+
+export interface InvoiceLine extends InvoiceLineInput {
+  id: number
+  amount: number
+}
+
+export interface InvoiceCreate {
+  invoice_type: InvoiceType
+  date_of_issue: string
+  due_date?: string | null
+
+  currency?: Currency
+  vat_applicable?: boolean
+  vat_treatment?: VatTreatment
+  vat_rate_percent?: number
+  counterparty?: string
+  subject?: string
+
+  fixture_id?: number | null
+  voyage_id?: number | null
+  vessel_id?: number | null
+  claim_id?: number | null
+
+  hire_period_start?: string
+  hire_period_end?: string
+
+  lines?: InvoiceLineInput[]
+}
+
+export interface Invoice extends InvoiceCreate {
+  id: number
+  invoice_number: string | null
+  status: InvoiceStatus
+  currency: Currency
+  vat_applicable: boolean
+  vat_amount: number
+  counterparty: string
+  fixture_id: number | null
+  voyage_id: number | null
+  vessel_id: number
+  claim_id: number | null
+  payment_id: number | null
+  total_amount_due: number
+  total_amount_due_rub: number | null
+  lines: InvoiceLine[]
 }

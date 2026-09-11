@@ -113,6 +113,14 @@ export default function ReportsPage() {
                     <td>{fleetPnl.net_result}</td>
                   </tr>
                   <tr>
+                    <th>{t('reports.invoicedRevenue')}</th>
+                    <td>{fleetPnl.invoiced_revenue}</td>
+                  </tr>
+                  <tr>
+                    <th>{t('reports.varianceVsInvoiced')}</th>
+                    <td>{fleetPnl.variance_vs_invoiced}</td>
+                  </tr>
+                  <tr>
                     <th>{t('reports.voyageCount')}</th>
                     <td>{fleetPnl.voyage_count}</td>
                   </tr>

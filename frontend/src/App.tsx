@@ -6,6 +6,7 @@ import {
   Calculator,
   ClipboardList,
   CreditCard,
+  FileSpreadsheet,
   FileText,
   Fuel,
   Gavel,
@@ -28,6 +29,7 @@ import ExchangeRatesPage from './pages/ExchangeRatesPage'
 import BunkerReplenishmentsPage from './pages/BunkerReplenishmentsPage'
 import DisbursementAccountsPage from './pages/DisbursementAccountsPage'
 import PaymentsPage from './pages/PaymentsPage'
+import InvoicingPage from './pages/InvoicingPage'
 import VoyageReportsPage from './pages/VoyageReportsPage'
 import VoyageEstimatesPage from './pages/VoyageEstimatesPage'
 import VettingInspectionsPage from './pages/VettingInspectionsPage'
@@ -87,6 +89,10 @@ function App() {
             <CreditCard size={16} />
             {t('nav.payments')}
           </NavLink>
+          <NavLink to="/invoicing" className="nav-link">
+            <FileSpreadsheet size={16} />
+            {t('nav.invoicing')}
+          </NavLink>
           <NavLink to="/voyage-reports" className="nav-link">
             <TrendingUp size={16} />
             {t('nav.voyageReports')}
@@ -141,6 +147,7 @@ function App() {
           <Route path="/bunkers" element={<BunkerReplenishmentsPage />} />
           <Route path="/disbursement-accounts" element={<DisbursementAccountsPage />} />
           <Route path="/payments" element={<PaymentsPage />} />
+          <Route path="/invoicing" element={<InvoicingPage />} />
           <Route path="/voyage-reports" element={<VoyageReportsPage />} />
           <Route path="/voyage-estimates" element={<VoyageEstimatesPage />} />
           <Route path="/vetting" element={<VettingInspectionsPage />} />

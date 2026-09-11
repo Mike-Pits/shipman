@@ -1,22 +1,21 @@
 from tests.test_vessels import vessel_payload
 
 
-def _create_tc_out_voyage(client, imo_number="9123456"):
+def _create_tc_out_voyage(client, imo_number="9123456", fixture_overrides=None):
     vessel_id = client.post("/vessels", json=vessel_payload(imo_number=imo_number)).json()["id"]
-    fixture_id = client.post(
-        "/fixtures",
-        json={
-            "fixture_type": "time_charter_out",
-            "charterer": "Northern Charterers Ltd",
-            "contract_currency": "USD",
-            "hire_rate": 9000,
-            "hire_rate_basis": "daily",
-            "charter_period_from": "2026-06-01",
-            "charter_period_to": "2026-08-30",
-            "hire_payment_basis": "advance",
-            "hire_payment_frequency_days": 30,
-        },
-    ).json()["id"]
+    fixture_payload = {
+        "fixture_type": "time_charter_out",
+        "charterer": "Northern Charterers Ltd",
+        "contract_currency": "USD",
+        "hire_rate": 9000,
+        "hire_rate_basis": "daily",
+        "charter_period_from": "2026-06-01",
+        "charter_period_to": "2026-08-30",
+        "hire_payment_basis": "advance",
+        "hire_payment_frequency_days": 30,
+    }
+    fixture_payload.update(fixture_overrides or {})
+    fixture_id = client.post("/fixtures", json=fixture_payload).json()["id"]
     voyage_id = client.post(
         "/voyages",
         json={
@@ -81,6 +80,30 @@ def test_off_hire_deduction_is_calculated_automatically_from_dates_and_hire_rate
     assert created["duration_days"] == 2
     assert created["calculated_deduction"] == 18000
     assert created["effective_deduction"] == 18000
+
+
+def test_off_hire_deduction_includes_vat_when_hire_is_vat_exclusive(client):
+    voyage_id = _create_tc_out_voyage(
+        client,
+        fixture_overrides={
+            "vat_applicable": True,
+            "vat_treatment": "exclusive",
+            "vat_rate_percent": 20,
+        },
+    )
+
+    response = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 00:00:00",
+            "end_datetime": "2026-06-07 00:00:00",
+            "reason": "Main engine breakdown",
+        },
+    )
+
+    assert response.status_code == 201
+    # 2 days * 9000/day = 18000 net, +20% VAT = 21600
+    assert response.json()["calculated_deduction"] == 21600
 
 
 def test_operator_can_override_the_calculated_deduction(client):

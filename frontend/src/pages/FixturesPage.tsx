@@ -1,13 +1,13 @@
-import { Fragment, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createFixture, generateHireInstallments, listFixtures, updateFixture } from '../api/fixtures'
-import { listVessels } from '../api/vessels'
-import type { Currency, Fixture, FixtureCreate, FixtureType, Vessel } from '../api/types'
+import { createFixture, listFixtures, updateFixture } from '../api/fixtures'
+import type { Currency, Fixture, FixtureCreate, FixtureType } from '../api/types'
 
 const EMPTY_FORM: FixtureCreate = {
   fixture_type: 'voyage_charter',
   charterer: '',
   contract_currency: '' as Currency,
+  vat_applicable: false,
   brokers: [],
 }
 
@@ -24,44 +24,25 @@ const FIXTURE_TYPE_LABEL_KEYS: Record<FixtureType, string> = {
   coa: 'fixtures.typeCoa',
 }
 
-type InstallmentForm = { vesselId: string; invoiceDateOverride: string }
-const EMPTY_INSTALLMENT_FORM: InstallmentForm = { vesselId: '', invoiceDateOverride: '' }
-
 export default function FixturesPage() {
   const { t } = useTranslation()
   const [fixtures, setFixtures] = useState<Fixture[]>([])
-  const [vessels, setVessels] = useState<Vessel[]>([])
   const [loading, setLoading] = useState(true)
   const [form, setForm] = useState<FixtureCreate>(EMPTY_FORM)
   const [brokers, setBrokers] = useState<BrokerRow[]>(EMPTY_BROKERS)
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
-  const [installmentForms, setInstallmentForms] = useState<Record<number, InstallmentForm>>({})
-  const [installmentMessage, setInstallmentMessage] = useState<string | null>(null)
 
   const refresh = () => listFixtures().then(setFixtures)
 
   useEffect(() => {
-    Promise.all([refresh(), listVessels().then(setVessels)]).finally(() => setLoading(false))
+    refresh().finally(() => setLoading(false))
   }, [])
 
-  const installmentFormFor = (fixtureId: number) => installmentForms[fixtureId] ?? EMPTY_INSTALLMENT_FORM
-
-  const handleGenerateInstallments = async (fixture: Fixture, e: React.FormEvent) => {
-    e.preventDefault()
-    setError(null)
-    setInstallmentMessage(null)
-    const installmentForm = installmentFormFor(fixture.id)
-    try {
-      const installments = await generateHireInstallments(fixture.id, {
-        vessel_id: Number(installmentForm.vesselId),
-        invoice_date_override: installmentForm.invoiceDateOverride || undefined,
-      })
-      setInstallmentForms((f) => ({ ...f, [fixture.id]: EMPTY_INSTALLMENT_FORM }))
-      setInstallmentMessage(t('fixtures.installmentsGenerated', { count: installments.length }))
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to generate hire installments')
-    }
+  const vatSummary = (f: Fixture) => {
+    if (!f.vat_applicable) return t('fixtures.vatNotApplicable')
+    const treatmentKey = f.vat_treatment === 'inclusive' ? 'fixtures.vatInclusiveShort' : 'fixtures.vatExclusiveShort'
+    return `${f.vat_rate_percent}% ${t(treatmentKey)}`
   }
 
   const field =
@@ -130,6 +111,7 @@ export default function FixturesPage() {
                 <th>{t('fixtures.columnCharterer')}</th>
                 <th>{t('fixtures.columnCurrency')}</th>
                 <th>{t('fixtures.columnKeyRate')}</th>
+                <th>{t('fixtures.columnVat')}</th>
                 <th>{t('fixtures.columnDateConcluded')}</th>
                 <th>{t('fixtures.columnCpRef')}</th>
                 <th>{t('fixtures.columnCpType')}</th>
@@ -138,74 +120,26 @@ export default function FixturesPage() {
             </thead>
             <tbody>
               {fixtures.map((f) => (
-                <Fragment key={f.id}>
-                  <tr>
-                    <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
-                    <td>{f.charterer}</td>
-                    <td>{f.contract_currency}</td>
-                    <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
-                    <td>{f.date_concluded ?? '—'}</td>
-                    <td>{f.charter_party_ref ?? '—'}</td>
-                    <td>{f.charter_party_type ?? '—'}</td>
-                    <td>
-                      <button type="button" onClick={() => handleEdit(f)}>
-                        {t('common.edit')}
-                      </button>
-                    </td>
-                  </tr>
-                  {f.fixture_type === 'time_charter_out' && (
-                    <tr>
-                      <td colSpan={8}>
-                        <form onSubmit={(e) => handleGenerateInstallments(f, e)}>
-                          <label>
-                            {t('fixtures.installmentVessel')}
-                            <select
-                              value={installmentFormFor(f.id).vesselId}
-                              onChange={(e) =>
-                                setInstallmentForms((forms) => ({
-                                  ...forms,
-                                  [f.id]: { ...installmentFormFor(f.id), vesselId: e.target.value },
-                                }))
-                              }
-                              required
-                            >
-                              <option value="" disabled>
-                                {t('fixtures.selectVessel')}
-                              </option>
-                              {vessels.map((v) => (
-                                <option key={v.id} value={v.id}>
-                                  {v.name}
-                                </option>
-                              ))}
-                            </select>
-                          </label>
-                          {f.hire_payment_basis === 'days_after_invoice' && (
-                            <label>
-                              {t('fixtures.installmentInvoiceDateOverride')}
-                              <input
-                                value={installmentFormFor(f.id).invoiceDateOverride}
-                                onChange={(e) =>
-                                  setInstallmentForms((forms) => ({
-                                    ...forms,
-                                    [f.id]: { ...installmentFormFor(f.id), invoiceDateOverride: e.target.value },
-                                  }))
-                                }
-                                placeholder="YYYY-MM-DD"
-                              />
-                            </label>
-                          )}
-                          <button type="submit">{t('fixtures.generateInstallmentsButton')}</button>
-                        </form>
-                      </td>
-                    </tr>
-                  )}
-                </Fragment>
+                <tr key={f.id}>
+                  <td>{t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])}</td>
+                  <td>{f.charterer}</td>
+                  <td>{f.contract_currency}</td>
+                  <td>{f.freight_rate ?? f.hire_rate ?? f.rate_per_tonne ?? '—'}</td>
+                  <td>{vatSummary(f)}</td>
+                  <td>{f.date_concluded ?? '—'}</td>
+                  <td>{f.charter_party_ref ?? '—'}</td>
+                  <td>{f.charter_party_type ?? '—'}</td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(f)}>
+                      {t('common.edit')}
+                    </button>
+                  </td>
+                </tr>
               ))}
             </tbody>
           </table>
         </div>
       )}
-      {installmentMessage && <p role="status">{installmentMessage}</p>}
 
       <h2>{editingId !== null ? t('fixtures.editFixture') : t('fixtures.createFixture')}</h2>
       {editingId !== null && <p role="alert">{t('fixtures.editWarning')}</p>}
@@ -232,6 +166,45 @@ export default function FixturesPage() {
             <option value="USD">USD</option>
           </select>
         </label>
+        <label>
+          {t('fixtures.vatApplicable')}
+          <input
+            type="checkbox"
+            checked={form.vat_applicable}
+            onChange={(e) =>
+              setForm((f) => ({
+                ...f,
+                vat_applicable: e.target.checked,
+                vat_treatment: e.target.checked ? f.vat_treatment : undefined,
+                vat_rate_percent: e.target.checked ? f.vat_rate_percent : undefined,
+              }))
+            }
+          />
+        </label>
+        {form.vat_applicable && (
+          <>
+            <label>
+              {t('fixtures.vatTreatment')}
+              <select value={form.vat_treatment ?? ''} onChange={field('vat_treatment')} required>
+                <option value="" disabled>
+                  {t('fixtures.selectVatTreatment')}
+                </option>
+                <option value="inclusive">{t('fixtures.vatInclusive')}</option>
+                <option value="exclusive">{t('fixtures.vatExclusive')}</option>
+              </select>
+            </label>
+            <label>
+              {t('fixtures.vatRatePercent')}
+              <input
+                type="number"
+                step="0.01"
+                value={form.vat_rate_percent ?? ''}
+                onChange={field('vat_rate_percent', true)}
+                required
+              />
+            </label>
+          </>
+        )}
         <label>
           {t('fixtures.dateConcluded')}
           <input value={form.date_concluded ?? ''} onChange={field('date_concluded')} placeholder="YYYY-MM-DD" />

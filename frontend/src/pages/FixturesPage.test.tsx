@@ -31,7 +31,6 @@ describe('FixturesPage', () => {
           { id: 1, fixture_type: 'voyage_charter', charterer: 'Test Charterer', contract_currency: 'USD', brokers: [] },
         ],
       },
-      { status: 200, body: [] },
     ])
 
     render(<FixturesPage />)
@@ -42,7 +41,6 @@ describe('FixturesPage', () => {
   it('lets the operator create a Voyage Charter fixture', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchSequence([
-      { status: 200, body: [] },
       { status: 200, body: [] },
       {
         status: 201,
@@ -64,7 +62,7 @@ describe('FixturesPage', () => {
     await user.type(screen.getByLabelText(/cargo grade/i), 'gasoil')
     await user.click(screen.getByRole('button', { name: /create fixture/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
     const body = JSON.parse(postCall![1].body as string)
     expect(body).toMatchObject({
@@ -79,10 +77,45 @@ describe('FixturesPage', () => {
     })
   })
 
-  it('lets the operator create a Time Charter Out fixture with configured hire payment terms', async () => {
+  it('lets the operator mark a fixture VAT-applicable and choose how VAT is treated', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchSequence([
       { status: 200, body: [] },
+      {
+        status: 201,
+        body: { id: 8, fixture_type: 'voyage_charter', charterer: 'Baltic Traders', contract_currency: 'USD', brokers: [] },
+      },
+      { status: 200, body: [] },
+    ])
+
+    render(<FixturesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    expect(screen.queryByLabelText(/vat treatment/i)).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText(/charterer/i), 'Baltic Traders')
+    await user.selectOptions(screen.getByLabelText(/contract currency/i), 'USD')
+    await user.click(screen.getByLabelText(/vat applicable/i))
+
+    expect(screen.getByLabelText(/vat treatment/i)).toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(/vat treatment/i), 'exclusive')
+    await user.type(screen.getByLabelText(/vat rate/i), '20')
+    await user.click(screen.getByRole('button', { name: /create fixture/i }))
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+    const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+    const body = JSON.parse(postCall![1].body as string)
+    expect(body).toMatchObject({
+      vat_applicable: true,
+      vat_treatment: 'exclusive',
+      vat_rate_percent: 20,
+    })
+  })
+
+  it('lets the operator create a Time Charter Out fixture with configured hire payment terms', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchSequence([
       { status: 200, body: [] },
       {
         status: 201,
@@ -105,7 +138,7 @@ describe('FixturesPage', () => {
     await user.type(screen.getByLabelText(/hire payment frequency/i), '30')
     await user.click(screen.getByRole('button', { name: /create fixture/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
     const body = JSON.parse(postCall![1].body as string)
     expect(body).toMatchObject({
@@ -122,7 +155,6 @@ describe('FixturesPage', () => {
   it('lets the operator create a COA fixture', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchSequence([
-      { status: 200, body: [] },
       { status: 200, body: [] },
       {
         status: 201,
@@ -143,7 +175,7 @@ describe('FixturesPage', () => {
     await user.type(screen.getByLabelText(/rate per tonne/i), '28')
     await user.click(screen.getByRole('button', { name: /create fixture/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
     const body = JSON.parse(postCall![1].body as string)
     expect(body).toMatchObject({
@@ -158,7 +190,6 @@ describe('FixturesPage', () => {
   it('lets the operator add up to 3 brokers with commission percentages', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchSequence([
-      { status: 200, body: [] },
       { status: 200, body: [] },
       {
         status: 201,
@@ -177,7 +208,7 @@ describe('FixturesPage', () => {
     await user.type(screen.getByLabelText(/broker 1 commission/i), '1.25')
     await user.click(screen.getByRole('button', { name: /create fixture/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
     const body = JSON.parse(postCall![1].body as string)
     expect(body.brokers).toEqual([{ broker_name: 'Acme Brokers', commission_percentage: 1.25 }])
@@ -199,7 +230,6 @@ describe('FixturesPage', () => {
     }
     const fetchMock = mockFetchSequence([
       { status: 200, body: [existingFixture] },
-      { status: 200, body: [] },
       { status: 200, body: { ...existingFixture, charterer: 'Updated Charterer' } },
       { status: 200, body: [{ ...existingFixture, charterer: 'Updated Charterer' }] },
     ])
@@ -218,48 +248,9 @@ describe('FixturesPage', () => {
     await user.type(chartererInput, 'Updated Charterer')
     await user.click(screen.getByRole('button', { name: /update fixture/i }))
 
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(4))
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     const putCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
     expect(putCall?.[0]).toContain('/fixtures/6')
     expect(JSON.parse(putCall![1].body as string).charterer).toBe('Updated Charterer')
-  })
-
-  it('lets the operator generate hire installments for a Time Charter Out fixture with an anchored invoice date', async () => {
-    const user = userEvent.setup()
-    const tcOutFixture = {
-      id: 7,
-      fixture_type: 'time_charter_out',
-      charterer: 'Northern Charterers',
-      contract_currency: 'USD',
-      hire_rate: 9000,
-      hire_rate_basis: 'daily',
-      charter_period_from: '2026-06-01',
-      charter_period_to: '2026-08-30',
-      hire_payment_basis: 'days_after_invoice',
-      hire_payment_frequency_days: 30,
-      hire_payment_days_after_invoice: 15,
-      brokers: [],
-    }
-    const fetchMock = mockFetchSequence([
-      { status: 200, body: [tcOutFixture] },
-      { status: 200, body: [{ id: 1, name: 'MV Test Vessel' }] },
-      { status: 201, body: [{ id: 101 }, { id: 102 }, { id: 103 }] },
-    ])
-
-    render(<FixturesPage />)
-    expect(await screen.findByText('Northern Charterers')).toBeInTheDocument()
-
-    await user.selectOptions(screen.getByLabelText(/^vessel$/i), '1')
-    await user.type(screen.getByLabelText(/actual invoice date/i), '2026-06-04')
-    await user.click(screen.getByRole('button', { name: /generate hire installments/i }))
-
-    await waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
-    const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
-    expect(postCall?.[0]).toContain('/fixtures/7/generate-hire-installments')
-    expect(JSON.parse(postCall![1].body as string)).toEqual({
-      vessel_id: 1,
-      invoice_date_override: '2026-06-04',
-    })
-    expect(await screen.findByText(/generated 3 hire installment/i)).toBeInTheDocument()
   })
 })

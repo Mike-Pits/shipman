@@ -1,10 +1,11 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 
 from app.schemas.common import Currency
 
 FixtureType = Literal["voyage_charter", "time_charter_out", "coa"]
+VatTreatment = Literal["inclusive", "exclusive"]
 
 
 class FixtureBrokerCreate(BaseModel):
@@ -22,6 +23,10 @@ class FixtureCreate(BaseModel):
     fixture_type: FixtureType
     charterer: str
     contract_currency: Currency
+
+    vat_applicable: bool = False
+    vat_treatment: VatTreatment | None = None
+    vat_rate_percent: float | None = None
 
     date_concluded: str | None = None
     charter_party_ref: str | None = Field(default=None, max_length=15)
@@ -73,6 +78,15 @@ class FixtureCreate(BaseModel):
             raise ValueError("A fixture supports at most 3 brokers")
         return brokers
 
+    @model_validator(mode="after")
+    def validate_vat_fields(self) -> "FixtureCreate":
+        if self.vat_applicable:
+            if self.vat_treatment is None:
+                raise ValueError("vat_treatment is required when VAT is applicable")
+            if self.vat_rate_percent is None:
+                raise ValueError("vat_rate_percent is required when VAT is applicable")
+        return self
+
 
 class FixtureRead(BaseModel):
     model_config = ConfigDict(from_attributes=True)
@@ -81,6 +95,10 @@ class FixtureRead(BaseModel):
     fixture_type: FixtureType
     charterer: str
     contract_currency: Currency
+
+    vat_applicable: bool = False
+    vat_treatment: str | None = None
+    vat_rate_percent: float | None = None
 
     date_concluded: str | None = None
     charter_party_ref: str | None = None

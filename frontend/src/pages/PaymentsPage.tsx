@@ -1,6 +1,13 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { createPayment, getPaymentWithDisplay, listPayments, updatePayment, updatePaymentStatus } from '../api/payments'
+import {
+  createPayment,
+  deletePayment,
+  getPaymentWithDisplay,
+  listPayments,
+  updatePayment,
+  updatePaymentStatus,
+} from '../api/payments'
 import { listVessels } from '../api/vessels'
 import { listVoyages } from '../api/voyages'
 import type {
@@ -104,6 +111,18 @@ export default function PaymentsPage() {
     }
   }
 
+  const handleDelete = async (payment: Payment) => {
+    if (!window.confirm(t('payments.deleteConfirm', { costType: payment.cost_type_name }))) return
+    setError(null)
+    try {
+      await deletePayment(payment.id)
+      if (editingId === payment.id) handleCancelEdit()
+      await refresh()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to delete payment')
+    }
+  }
+
   const handleStatusChange = async (payment: Payment, status: PaymentStatus) => {
     setError(null)
     try {
@@ -190,6 +209,9 @@ export default function PaymentsPage() {
                   )}
                   <button type="button" onClick={() => handleEdit(p)}>
                     {t('common.edit')}
+                  </button>
+                  <button type="button" onClick={() => handleDelete(p)}>
+                    {t('common.delete')}
                   </button>
                 </td>
               </tr>

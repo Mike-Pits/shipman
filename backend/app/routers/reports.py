@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 from app.database import get_db
 from app.models.claim import Claim
 from app.models.disbursement_account import DisbursementAccount
+from app.models.invoice import Invoice
 from app.models.off_hire_period import OffHirePeriod
 from app.models.payment import Payment
 from app.models.vessel import Vessel
@@ -46,15 +47,25 @@ def _voyage_or_404(voyage_id: int, db: Session) -> Voyage:
     return voyage
 
 
+def _invoiced_revenue(query) -> float:
+    """Sum of issued invoices' billed RUB total — frozen at issue time, independent
+    of any later correction to what the linked Payment actually collected."""
+    invoices = query.filter(Invoice.status == "issued").all()
+    return round(sum(i.total_amount_due_rub or 0 for i in invoices), 2)
+
+
 def _voyage_pnl(voyage_id: int, db: Session) -> dict:
     payments = db.query(Payment).filter(Payment.voyage_id == voyage_id).all()
     revenue = round(sum(p.rub_equivalent for p in payments if p.cost_category == "income"), 2)
     costs = round(sum(p.rub_equivalent for p in payments if p.cost_category == "expense"), 2)
+    invoiced_revenue = _invoiced_revenue(db.query(Invoice).filter(Invoice.voyage_id == voyage_id))
     return {
         "voyage_id": voyage_id,
         "revenue": revenue,
         "costs": costs,
         "net_result": round(revenue - costs, 2),
+        "invoiced_revenue": invoiced_revenue,
+        "variance_vs_invoiced": round(revenue - invoiced_revenue, 2),
         "currency": "RUB",
     }
 
@@ -115,12 +126,17 @@ def fleet_pnl(
     revenue = round(sum(p.rub_equivalent for p in payments if p.cost_category == "income"), 2)
     costs = round(sum(p.rub_equivalent for p in payments if p.cost_category == "expense"), 2)
     voyage_ids = {p.voyage_id for p in payments if p.voyage_id is not None}
+    invoiced_revenue = _invoiced_revenue(
+        db.query(Invoice).filter(Invoice.date_of_issue >= start_date, Invoice.date_of_issue <= end_date)
+    )
     result = {
         "start_date": start_date,
         "end_date": end_date,
         "revenue": revenue,
         "costs": costs,
         "net_result": round(revenue - costs, 2),
+        "invoiced_revenue": invoiced_revenue,
+        "variance_vs_invoiced": round(revenue - invoiced_revenue, 2),
         "voyage_count": len(voyage_ids),
         "currency": "RUB",
     }
