@@ -83,6 +83,11 @@ def voyage_pnl(voyage_id: int, format: ReportFormat = "json", db: Session = Depe
 @router.get("/tce/{voyage_id}")
 def tce(voyage_id: int, format: ReportFormat = "json", db: Session = Depends(get_db)):
     voyage = _voyage_or_404(voyage_id, db)
+    if voyage.voyage_purpose != "employment":
+        raise HTTPException(
+            status_code=422,
+            detail="TCE only applies to employment voyages — this voyage has no revenue to divide by days",
+        )
     if not voyage.end_date:
         raise HTTPException(
             status_code=422,
@@ -143,6 +148,92 @@ def fleet_pnl(
     if format == "xlsx":
         return rows_to_xlsx_response(result, f"fleet_pnl_{start_date}_to_{end_date}")
     return result
+
+
+def _overlap_days(start: datetime, end: datetime | None, query_start: datetime, query_end: datetime) -> float:
+    """Fractional-day overlap between a period [start, end) and a query range. An
+    open-ended period (end=None) is clipped to query_end."""
+    effective_end = end if end is not None else query_end
+    overlap_start = max(start, query_start)
+    overlap_end = min(effective_end, query_end)
+    if overlap_start >= overlap_end:
+        return 0.0
+    return (overlap_end - overlap_start).total_seconds() / 86400
+
+
+@router.get("/fleet-utilization")
+def fleet_utilization(
+    start_date: str, end_date: str, format: ReportFormat = "json", db: Session = Depends(get_db)
+):
+    """SRS §4.4a: per-vessel breakdown of employment vs. unfixed ballast/idle vs.
+    drydock time, plus off-hire (a subset of employment time, shown separately per
+    the operator's preference — see the design discussion) and unaccounted days
+    (calendar days in range with no voyage record at all — a data-entry gap flag)."""
+    q_start = datetime.strptime(start_date, "%Y-%m-%d")
+    q_end = datetime.strptime(end_date, "%Y-%m-%d")
+    total_days = (q_end - q_start).total_seconds() / 86400
+
+    rows = []
+    for vessel in db.query(Vessel).all():
+        voyages = db.query(Voyage).filter(Voyage.vessel_id == vessel.id).all()
+        employment_days = ballast_days = drydock_days = 0.0
+        for v in voyages:
+            v_start = datetime.strptime(v.start_date, "%Y-%m-%d")
+            v_end = datetime.strptime(v.end_date, "%Y-%m-%d") if v.end_date else None
+            overlap = _overlap_days(v_start, v_end, q_start, q_end)
+            if v.voyage_purpose == "employment":
+                employment_days += overlap
+            elif v.voyage_purpose == "ballast_passage":
+                ballast_days += overlap
+            elif v.voyage_purpose == "drydock_repair":
+                drydock_days += overlap
+
+        off_hire_days = 0.0
+        voyage_ids = [v.id for v in voyages]
+        if voyage_ids:
+            periods = db.query(OffHirePeriod).filter(OffHirePeriod.voyage_id.in_(voyage_ids)).all()
+            for period in periods:
+                p_start = datetime.strptime(period.start_datetime, "%Y-%m-%d %H:%M:%S")
+                p_end = datetime.strptime(period.end_datetime, "%Y-%m-%d %H:%M:%S")
+                off_hire_days += _overlap_days(p_start, p_end, q_start, q_end)
+
+        unaccounted_days = max(0.0, total_days - employment_days - ballast_days - drydock_days)
+
+        rows.append(
+            {
+                "vessel_id": vessel.id,
+                "vessel_name": vessel.name,
+                "employment_days": round(employment_days, 2),
+                "ballast_days": round(ballast_days, 2),
+                "drydock_days": round(drydock_days, 2),
+                "off_hire_days": round(off_hire_days, 2),
+                "unaccounted_days": round(unaccounted_days, 2),
+            }
+        )
+    if format == "xlsx":
+        return rows_to_xlsx_response(rows, f"fleet_utilization_{start_date}_to_{end_date}")
+    return rows
+
+
+@router.get("/current-vessel-status")
+def current_vessel_status(db: Session = Depends(get_db)):
+    """Dashboard tile: which vessels have no open employment voyage covering
+    today — i.e. currently idle/ballast, in drydock, or entirely unaccounted for."""
+    today = date.today().isoformat()
+    rows = []
+    for vessel in db.query(Vessel).all():
+        voyages = db.query(Voyage).filter(Voyage.vessel_id == vessel.id).all()
+        matches = [v for v in voyages if v.start_date <= today and (v.end_date is None or v.end_date >= today)]
+        current = max(matches, key=lambda v: v.start_date) if matches else None
+        rows.append(
+            {
+                "vessel_id": vessel.id,
+                "vessel_name": vessel.name,
+                "status": current.voyage_purpose if current is not None else "unaccounted",
+                "voyage_id": current.id if current is not None else None,
+            }
+        )
+    return rows
 
 
 @router.get("/da-reconciliation")

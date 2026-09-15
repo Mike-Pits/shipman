@@ -52,6 +52,10 @@ def _compute_fuel_warnings(report: DailyReport, db: Session) -> list[str]:
     voyage = db.get(Voyage, report.voyage_id)
     if voyage is None:
         return []
+    if voyage.voyage_purpose == "drydock_repair":
+        # near-zero, highly variable (shore power vs. auxiliary-only) — no meaningful
+        # "normal" rate to compare against
+        return []
     mode = "laden" if voyage.laden else "ballast"
 
     profile = (

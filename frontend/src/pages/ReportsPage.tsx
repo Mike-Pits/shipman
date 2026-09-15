@@ -4,13 +4,25 @@ import {
   claimsStatusExportUrl,
   daReconciliationExportUrl,
   fleetPnlExportUrl,
+  fleetUtilizationExportUrl,
   fleetVettingStatusExportUrl,
   getClaimsStatus,
   getDaReconciliation,
   getFleetPnl,
+  getFleetUtilization,
   getFleetVettingStatus,
 } from '../api/reports'
-import type { ClaimsStatusRow, ClaimStatus, ClaimType, DaReconciliationRow, DisbursementAccountStatus, FleetPnl, FleetVettingStatusRow, VettingStatus } from '../api/types'
+import type {
+  ClaimsStatusRow,
+  ClaimStatus,
+  ClaimType,
+  DaReconciliationRow,
+  DisbursementAccountStatus,
+  FleetPnl,
+  FleetUtilizationRow,
+  FleetVettingStatusRow,
+  VettingStatus,
+} from '../api/types'
 
 const DA_STATUS_KEYS: Record<DisbursementAccountStatus, string> = {
   pda_only: 'disbursementAccounts.statusPdaOnly',
@@ -47,6 +59,7 @@ export default function ReportsPage() {
   const [startDate, setStartDate] = useState('')
   const [endDate, setEndDate] = useState('')
   const [fleetPnl, setFleetPnl] = useState<FleetPnl | null>(null)
+  const [utilizationRows, setUtilizationRows] = useState<FleetUtilizationRow[] | null>(null)
   const [daRows, setDaRows] = useState<DaReconciliationRow[]>([])
   const [vettingRows, setVettingRows] = useState<FleetVettingStatusRow[]>([])
   const [claimsRows, setClaimsRows] = useState<ClaimsStatusRow[]>([])
@@ -67,6 +80,16 @@ export default function ReportsPage() {
       setFleetPnl(await getFleetPnl(startDate, endDate))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to run fleet P&L')
+    }
+  }
+
+  const handleRunFleetUtilization = async (e: React.FormEvent) => {
+    e.preventDefault()
+    setError(null)
+    try {
+      setUtilizationRows(await getFleetUtilization(startDate, endDate))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to run fleet utilization')
     }
   }
 
@@ -133,6 +156,52 @@ export default function ReportsPage() {
             )}
             <a href={fleetPnlExportUrl(startDate || '1900-01-01', endDate || '2999-12-31')}>
               {t('reports.exportFleetPnl')}
+            </a>
+          </section>
+
+          <section>
+            <h2>{t('reports.fleetUtilizationHeading')}</h2>
+            <form onSubmit={handleRunFleetUtilization}>
+              <label>
+                {t('reports.startDate')}
+                <input value={startDate} onChange={(e) => setStartDate(e.target.value)} placeholder="YYYY-MM-DD" required />
+              </label>
+              <label>
+                {t('reports.endDate')}
+                <input value={endDate} onChange={(e) => setEndDate(e.target.value)} placeholder="YYYY-MM-DD" required />
+              </label>
+              <button type="submit">{t('reports.runFleetUtilizationButton')}</button>
+            </form>
+            {utilizationRows && (
+              <div className="table-scroll">
+                <table>
+                  <thead>
+                    <tr>
+                      <th>{t('reports.columnVessel')}</th>
+                      <th>{t('reports.columnEmploymentDays')}</th>
+                      <th>{t('reports.columnBallastDays')}</th>
+                      <th>{t('reports.columnDrydockDays')}</th>
+                      <th>{t('reports.columnOffHireDays')}</th>
+                      <th>{t('reports.columnUnaccountedDays')}</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {utilizationRows.map((row) => (
+                      <tr key={row.vessel_id}>
+                        <td>{row.vessel_name}</td>
+                        <td>{row.employment_days}</td>
+                        <td>{row.ballast_days}</td>
+                        <td>{row.drydock_days}</td>
+                        <td>{row.off_hire_days}</td>
+                        <td>{row.unaccounted_days}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+            <a href={fleetUtilizationExportUrl(startDate || '1900-01-01', endDate || '2999-12-31')}>
+              {t('reports.exportFleetUtilization')}
             </a>
           </section>
 

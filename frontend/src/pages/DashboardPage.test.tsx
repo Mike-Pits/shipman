@@ -55,6 +55,7 @@ describe('DashboardPage', () => {
       '/reports/da-reconciliation': [{ status: 200, body: [] }],
       '/reports/vetting-status': [{ status: 200, body: [] }],
       '/reports/claims-status': [{ status: 200, body: [] }],
+      '/reports/current-vessel-status': [{ status: 200, body: [] }],
     })
 
     render(<DashboardPage />)
@@ -77,6 +78,7 @@ describe('DashboardPage', () => {
       '/reports/da-reconciliation': [{ status: 200, body: [] }],
       '/reports/vetting-status': [{ status: 200, body: [] }],
       '/reports/claims-status': [{ status: 200, body: [] }],
+      '/reports/current-vessel-status': [{ status: 200, body: [] }],
     })
 
     render(<DashboardPage />)
@@ -96,6 +98,7 @@ describe('DashboardPage', () => {
         { status: 200, body: [{ vessel_id: 1, vessel_name: 'MV Arctic', status: 'expired', expiry_date: '2025-01-01' }] },
       ],
       '/reports/claims-status': [{ status: 200, body: [{ id: 1 }, { id: 2 }, { id: 3 }] }],
+      '/reports/current-vessel-status': [{ status: 200, body: [] }],
     })
 
     render(<DashboardPage />)
@@ -104,5 +107,35 @@ describe('DashboardPage', () => {
     expect(screen.getByText('2')).toBeInTheDocument()
     expect(screen.getByText('1')).toBeInTheDocument()
     expect(screen.getByText('3')).toBeInTheDocument()
+  })
+
+  it('shows which vessels are not employed today', async () => {
+    mockFetchByUrl({
+      '/vessels': [{ status: 200, body: [] }],
+      '/voyages': [{ status: 200, body: [] }],
+      '/reports/fleet-pnl': [
+        { status: 200, body: { start_date: '2026-06-01', end_date: '2026-06-30', revenue: 0, costs: 0, net_result: 0, voyage_count: 0, currency: 'RUB' } },
+      ],
+      '/reports/da-reconciliation': [{ status: 200, body: [] }],
+      '/reports/vetting-status': [{ status: 200, body: [] }],
+      '/reports/claims-status': [{ status: 200, body: [] }],
+      '/reports/current-vessel-status': [
+        {
+          status: 200,
+          body: [
+            { vessel_id: 1, vessel_name: 'MV Arctic', status: 'employment', voyage_id: 1 },
+            { vessel_id: 2, vessel_name: 'SP Baltic', status: 'ballast_passage', voyage_id: 2 },
+            { vessel_id: 3, vessel_name: 'SP Dudinka', status: 'unaccounted', voyage_id: null },
+          ],
+        },
+      ],
+    })
+
+    render(<DashboardPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    expect(screen.getByText('Vessels Not Employed Today').closest('.stat-card')).toHaveTextContent('2')
+    expect(screen.getByText(/SP Baltic: Ballast Passage/)).toBeInTheDocument()
+    expect(screen.getByText(/SP Dudinka: No Record/)).toBeInTheDocument()
   })
 })

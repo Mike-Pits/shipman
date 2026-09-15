@@ -1,10 +1,16 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { getClaimsStatus, getDaReconciliation, getFleetPnl, getFleetVettingStatus } from '../api/reports'
+import { getClaimsStatus, getCurrentVesselStatus, getDaReconciliation, getFleetPnl, getFleetVettingStatus } from '../api/reports'
 import { listVessels } from '../api/vessels'
 import { listVoyages } from '../api/voyages'
 import StatCard from '../components/ui/StatCard'
-import type { FleetPnl } from '../api/types'
+import type { CurrentVesselStatusRow, FleetPnl } from '../api/types'
+
+const NOT_EMPLOYED_STATUS_KEYS: Record<string, string> = {
+  ballast_passage: 'voyages.purposeBallastPassage',
+  drydock_repair: 'voyages.purposeDrydockRepair',
+  unaccounted: 'dashboard.statusUnaccounted',
+}
 
 function monthToDateRange(): [string, string] {
   const now = new Date()
@@ -22,6 +28,7 @@ export default function DashboardPage() {
   const [unreconciledDas, setUnreconciledDas] = useState(0)
   const [vettingIssues, setVettingIssues] = useState(0)
   const [openClaims, setOpenClaims] = useState(0)
+  const [notEmployedVessels, setNotEmployedVessels] = useState<CurrentVesselStatusRow[]>([])
 
   useEffect(() => {
     const [start, end] = monthToDateRange()
@@ -34,6 +41,7 @@ export default function DashboardPage() {
         setVettingIssues(rows.filter((row) => row.status === 'expired' || row.status === 'failed').length),
       ),
       getClaimsStatus().then((rows) => setOpenClaims(rows.length)),
+      getCurrentVesselStatus().then((rows) => setNotEmployedVessels(rows.filter((r) => r.status !== 'employment'))),
     ]).finally(() => setLoading(false))
   }, [])
 
@@ -64,6 +72,14 @@ export default function DashboardPage() {
             tone={vettingIssues > 0 ? 'danger' : 'success'}
           />
           <StatCard label={t('dashboard.openClaims')} value={openClaims} tone={openClaims > 0 ? 'warning' : 'success'} />
+          <StatCard
+            label={t('dashboard.vesselsNotEmployed')}
+            value={notEmployedVessels.length}
+            tone={notEmployedVessels.length > 0 ? 'warning' : 'success'}
+            sub={notEmployedVessels
+              .map((v) => `${v.vessel_name}: ${t(NOT_EMPLOYED_STATUS_KEYS[v.status])}`)
+              .join(', ')}
+          />
         </div>
       )}
     </div>

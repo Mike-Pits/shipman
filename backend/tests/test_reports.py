@@ -226,3 +226,24 @@ def test_tce_treats_an_empty_string_end_date_as_unset_rather_than_erroring(clien
     response = client.get(f"/reports/tce/{voyage_id}")
 
     assert response.status_code == 422
+
+
+def test_tce_rejects_a_non_employment_voyage(client):
+    imo_number = str(next(_next_imo))
+    vessel_id = client.post("/vessels", json=vessel_payload(imo_number=imo_number)).json()["id"]
+    voyage_id = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-2026-01",
+            "load_port": "Rotterdam",
+            "discharge_port": "Primorsk",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-10",
+        },
+    ).json()["id"]
+
+    response = client.get(f"/reports/tce/{voyage_id}")
+
+    assert response.status_code == 422

@@ -140,6 +140,32 @@ def test_off_hire_is_rejected_for_a_non_tc_out_voyage(client):
     assert response.status_code == 422
 
 
+def test_off_hire_is_rejected_for_a_ballast_passage_voyage_with_no_fixture(client):
+    vessel_id = client.post("/vessels", json=vessel_payload()).json()["id"]
+    voyage_id = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-2026-01",
+            "load_port": "Rotterdam",
+            "discharge_port": "Primorsk",
+            "start_date": "2026-09-15",
+        },
+    ).json()["id"]
+
+    response = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-09-16 00:00:00",
+            "end_datetime": "2026-09-17 00:00:00",
+            "reason": "n/a",
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_operator_can_list_off_hire_periods_for_a_voyage(client):
     voyage_id = _create_tc_out_voyage(client)
     client.post(

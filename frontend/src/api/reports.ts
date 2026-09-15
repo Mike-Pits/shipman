@@ -1,5 +1,14 @@
 import { apiGet } from './client'
-import type { ClaimsStatusRow, DaReconciliationRow, FleetPnl, FleetVettingStatusRow, VoyagePnl, VoyageTce } from './types'
+import type {
+  ClaimsStatusRow,
+  CurrentVesselStatusRow,
+  DaReconciliationRow,
+  FleetPnl,
+  FleetUtilizationRow,
+  FleetVettingStatusRow,
+  VoyagePnl,
+  VoyageTce,
+} from './types'
 
 export const getVoyagePnl = (voyageId: number) => apiGet<VoyagePnl>(`/reports/voyage-pnl/${voyageId}`)
 export const getVoyageTce = (voyageId: number) => apiGet<VoyageTce>(`/reports/tce/${voyageId}`)
@@ -19,3 +28,10 @@ export const fleetVettingStatusExportUrl = () => '/api/reports/vetting-status?fo
 
 export const getClaimsStatus = () => apiGet<ClaimsStatusRow[]>('/reports/claims-status')
 export const claimsStatusExportUrl = () => '/api/reports/claims-status?format=xlsx'
+
+export const getFleetUtilization = (startDate: string, endDate: string) =>
+  apiGet<FleetUtilizationRow[]>(`/reports/fleet-utilization?start_date=${startDate}&end_date=${endDate}`)
+export const fleetUtilizationExportUrl = (startDate: string, endDate: string) =>
+  `/api/reports/fleet-utilization?start_date=${startDate}&end_date=${endDate}&format=xlsx`
+
+export const getCurrentVesselStatus = () => apiGet<CurrentVesselStatusRow[]>('/reports/current-vessel-status')

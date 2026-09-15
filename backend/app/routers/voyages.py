@@ -28,7 +28,7 @@ def _to_read(voyage: Voyage, db: Session) -> VoyageRead:
 
 @router.post("", response_model=VoyageRead, status_code=201)
 def create_voyage(payload: VoyageCreate, db: Session = Depends(get_db)):
-    if db.get(Fixture, payload.fixture_id) is None:
+    if payload.fixture_id is not None and db.get(Fixture, payload.fixture_id) is None:
         raise HTTPException(status_code=404, detail="Fixture not found")
     if db.get(Vessel, payload.vessel_id) is None:
         raise HTTPException(status_code=404, detail="Vessel not found")
@@ -67,7 +67,7 @@ def update_voyage(voyage_id: int, payload: VoyageCreate, db: Session = Depends(g
     voyage = db.get(Voyage, voyage_id)
     if voyage is None:
         raise HTTPException(status_code=404, detail="Voyage not found")
-    if db.get(Fixture, payload.fixture_id) is None:
+    if payload.fixture_id is not None and db.get(Fixture, payload.fixture_id) is None:
         raise HTTPException(status_code=404, detail="Fixture not found")
     if db.get(Vessel, payload.vessel_id) is None:
         raise HTTPException(status_code=404, detail="Vessel not found")
@@ -84,7 +84,7 @@ def _daily_hire_rate(fixture: Fixture) -> float:
 
 
 def _tc_out_fixture_or_422(voyage: Voyage, db: Session) -> Fixture:
-    fixture = db.get(Fixture, voyage.fixture_id)
+    fixture = db.get(Fixture, voyage.fixture_id) if voyage.fixture_id is not None else None
     if fixture is None or fixture.fixture_type != "time_charter_out":
         raise HTTPException(
             status_code=422,

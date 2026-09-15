@@ -97,3 +97,119 @@ def test_updating_an_unknown_voyage_returns_404(client):
     response = client.put("/voyages/999", json=voyage_payload(fixture_id, vessel_id))
 
     assert response.status_code == 404
+
+
+def test_employment_voyage_requires_fixture_discharge_port_and_cargo(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)
+
+    missing_fixture = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "employment",
+            "vessel_id": vessel_id,
+            "voyage_number": "V001",
+            "load_port": "Primorsk",
+            "discharge_port": "Rotterdam",
+            "start_date": "2026-09-02",
+            "cargo_grade": "Diesel",
+            "cargo_quantity_mt": 8200.0,
+        },
+    )
+    assert missing_fixture.status_code == 422
+
+    missing_cargo = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "employment",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "voyage_number": "V001",
+            "load_port": "Primorsk",
+            "discharge_port": "Rotterdam",
+            "start_date": "2026-09-02",
+        },
+    )
+    assert missing_cargo.status_code == 422
+
+
+def test_operator_can_record_a_ballast_passage_with_no_fixture(client):
+    vessel_id = _create_vessel(client)
+
+    response = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-2026-01",
+            "load_port": "Rotterdam",
+            "discharge_port": "Primorsk",
+            "start_date": "2026-09-15",
+            "end_date": "2026-09-22",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["fixture_id"] is None
+    assert body["cargo_grade"] is None
+    assert body["cargo_quantity_mt"] is None
+    assert body["laden"] is False
+
+
+def test_ballast_passage_requires_a_destination_port(client):
+    vessel_id = _create_vessel(client)
+
+    response = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-2026-01",
+            "load_port": "Rotterdam",
+            "start_date": "2026-09-15",
+        },
+    )
+
+    assert response.status_code == 422
+
+
+def test_operator_can_record_a_drydock_voyage_with_only_one_port(client):
+    vessel_id = _create_vessel(client)
+
+    response = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "drydock_repair",
+            "vessel_id": vessel_id,
+            "voyage_number": "DRYDOCK-2026-01",
+            "load_port": "Ust-Luga Yard",
+            "start_date": "2026-10-01",
+            "end_date": "2026-10-15",
+        },
+    )
+
+    assert response.status_code == 201
+    body = response.json()
+    assert body["fixture_id"] is None
+    assert body["discharge_port"] is None
+
+
+def test_non_employment_voyage_rejects_a_fixture_id(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)
+
+    response = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-2026-01",
+            "load_port": "Rotterdam",
+            "discharge_port": "Primorsk",
+            "start_date": "2026-09-15",
+        },
+    )
+
+    assert response.status_code == 422

@@ -72,12 +72,49 @@ describe('ReportsPage', () => {
     render(<ReportsPage />)
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
 
-    await user.type(screen.getByLabelText(/start date/i), '2026-06-01')
-    await user.type(screen.getByLabelText(/end date/i), '2026-06-30')
+    await user.type(screen.getAllByLabelText(/start date/i)[0], '2026-06-01')
+    await user.type(screen.getAllByLabelText(/end date/i)[0], '2026-06-30')
     await user.click(screen.getByRole('button', { name: /run fleet p&l/i }))
 
     expect(await screen.findByText('800000')).toBeInTheDocument()
     expect(screen.getByText('600000')).toBeInTheDocument()
+    expect(screen.getByText('2')).toBeInTheDocument()
+  })
+
+  it('runs a fleet utilization report for a date range', async () => {
+    const user = userEvent.setup()
+    mockFetchByUrl({
+      '/reports/fleet-utilization': [
+        {
+          status: 200,
+          body: [
+            {
+              vessel_id: 1,
+              vessel_name: 'MV Arctic',
+              employment_days: 5,
+              ballast_days: 3,
+              drydock_days: 2,
+              off_hire_days: 1,
+              unaccounted_days: 0,
+            },
+          ],
+        },
+      ],
+      '/reports/da-reconciliation': [{ status: 200, body: [] }],
+      '/reports/vetting-status': [{ status: 200, body: [] }],
+      '/reports/claims-status': [{ status: 200, body: [] }],
+    })
+
+    render(<ReportsPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await user.type(screen.getAllByLabelText(/start date/i)[1], '2026-06-01')
+    await user.type(screen.getAllByLabelText(/end date/i)[1], '2026-06-10')
+    await user.click(screen.getByRole('button', { name: /run fleet utilization/i }))
+
+    expect(await screen.findByText('MV Arctic')).toBeInTheDocument()
+    expect(screen.getByText('5')).toBeInTheDocument()
+    expect(screen.getByText('3')).toBeInTheDocument()
     expect(screen.getByText('2')).toBeInTheDocument()
   })
 
@@ -131,11 +168,13 @@ describe('ReportsPage', () => {
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
 
     const fleetLink = screen.getByRole('link', { name: /export fleet p&l/i }) as HTMLAnchorElement
+    const utilizationLink = screen.getByRole('link', { name: /export fleet utilization/i }) as HTMLAnchorElement
     const daLink = screen.getByRole('link', { name: /export da reconciliation/i }) as HTMLAnchorElement
     const vettingLink = screen.getByRole('link', { name: /export vetting status/i }) as HTMLAnchorElement
     const claimsLink = screen.getByRole('link', { name: /export claims status/i }) as HTMLAnchorElement
 
     expect(fleetLink.href).toContain('/api/reports/fleet-pnl')
+    expect(utilizationLink.href).toContain('/api/reports/fleet-utilization')
     expect(daLink.href).toContain('/api/reports/da-reconciliation?format=xlsx')
     expect(vettingLink.href).toContain('/api/reports/vetting-status?format=xlsx')
     expect(claimsLink.href).toContain('/api/reports/claims-status?format=xlsx')

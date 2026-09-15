@@ -34,6 +34,7 @@ This document supersedes [`SRS.md`](SRS.md) (v1, general-cargo/bulk fleet). It i
    4.14 Reports Module
    4.15 Audit Log
    4.16 Invoicing
+   4.17 Voyage Purpose: Ballast Passage & Drydock/Repair
 5. Data Dictionary
 6. Non-Functional Requirements
 7. User Interface Requirements
@@ -183,7 +184,7 @@ Multi-user roles (Master with vessel-scoped daily-report access, Finance read-on
 
 ### 4.4 Voyage Management
 
-**FR-12:** System shall allow creating Voyages linked to a Fixture, with: voyage number, vessel, load port, discharge port, start date, end date, cargo/grade, cargo quantity loaded (MT), laden/ballast flag, and free-text ice/NSR routing notes.
+**FR-12:** System shall allow creating Voyages linked to a Fixture, with: voyage number, vessel, load port, discharge port, start date, end date, cargo/grade, cargo quantity loaded (MT), laden/ballast flag, and free-text ice/NSR routing notes. This describes the **employment** voyage purpose — the common case, and the default. §4.17 covers the other two purposes (unfixed ballast passages and drydock/repair time), which relax which of these fields are required.
 
 **FR-13:** Daily reports (§4.5) can be linked to a specific voyage.
 
@@ -305,6 +306,8 @@ All reports generated on-demand, exportable to Excel — matches v1's approach.
 
 **FR-56:** Audit log shall **not** record changes to vessels (specifications) or system configuration.
 
+**FR-56a:** Audit log stores: user, timestamp, table, record ID, action, old values (JSON), new values (JSON).
+
 ### 4.16 Invoicing
 
 This is an internal payment-request document (Russian **«Счёт»**), not a legally compliant fiscal VAT document (**«Счёт-фактура»**, Tax Code Art. 169) — it carries no INN/KPP, legal-address, or signature-block fields, and makes no claim to being the operator's official tax document. It replaces the automatic hire-installment generation described in FR-34's historical note.
@@ -331,7 +334,21 @@ This is an internal payment-request document (Russian **«Счёт»**), not a l
 
 **FR-65:** Voyage P&L (FR-47) and Fleet P&L (FR-49) each display an additional **Invoiced Revenue** figure — the sum of `issued` invoices' billed total (in RUB, frozen at issue time) for that voyage or date range — alongside a **Variance vs. Invoiced** (`Revenue − Invoiced Revenue`). Revenue itself remains exactly as before (FR-30, Payment-driven); this is a display-only addition surfacing the gap between what was billed and what the corresponding Payment currently reflects as collected.
 
-**FR-57:** Audit log stores: user, timestamp, table, record ID, action, old values (JSON), new values (JSON).
+### 4.17 Voyage Purpose: Ballast Passage & Drydock/Repair
+
+Not every day a vessel is on the books is spent under a fixture. A vessel can be repositioning empty between employments (unfixed — no charter party covers it), or in a shipyard for planned maintenance. Both leave real gaps in the historical record if there's nowhere to put them, and both need to be visible in fleet reporting as something other than either "employed" or "nothing happened."
+
+**FR-66:** Every Voyage carries a `voyage_purpose`: **employment** (default — under a Fixture, FR-12), **ballast passage** (unfixed — the vessel is repositioning empty or waiting between fixtures, entirely at the owner's own cost and risk, with no charterer to bill), or **drydock/repair** (planned maintenance — the vessel is unavailable to trade regardless of market conditions). `fixture_id` is required only for `employment` and forbidden for the other two; `cargo_grade`/`cargo_quantity_mt`/`laden` are employment-only. A ballast passage still records a destination (`discharge_port`) as its "to" port; a drydock/repair voyage records only one location (`load_port`, repurposed as the yard) since there's nowhere to sail to. Payments, Daily Reports, and Claims already accept a voyage with no linked fixture (their own foreign keys were already optional), so expenses and noon reports against a ballast passage or drydock stay attach with no further changes. Disbursement Accounts (PDA/FDA) are not used for either — there's no charterer to reconcile a disbursement against, so port costs during a ballast passage or a drydock stay are recorded as direct expense Payments.
+
+**FR-67:** Off-Hire (FR-35) remains a **separate mechanism** from `drydock_repair` — it only applies mid-charter, deducting hire that would otherwise be owed under an active Time Charter. A drydock/repair voyage has no charter in force and therefore nothing to deduct; recording off-hire against a non-employment voyage is rejected. The two are never merged into one figure in reporting (FR-69) — they represent different situations (a charterer-facing deduction vs. pure fleet downtime) and collapsing them would hide which one actually happened.
+
+**FR-68:** The fuel-consumption sanity check (FR-19) is suppressed entirely for daily reports logged against a `drydock_repair` voyage — consumption during a yard stay is near-zero and highly variable (shore power vs. auxiliary-only load), so there is no meaningful "normal" rate to compare against.
+
+**FR-69:** TCE (FR-48) is rejected for any voyage whose purpose is not `employment` — dividing a near-zero-revenue voyage's net result by its duration would misrepresent what "Time Charter Equivalent" means. Voyage P&L (FR-47) works unmodified for a ballast passage or drydock voyage: revenue shows zero, costs show whatever was logged against it — a useful figure on its own (the cost of that particular gap) without needing a TCE.
+
+**FR-70:** A new **Fleet Utilization** report (alongside Fleet P&L, same date-range control) shows, per vessel: Employment days, Ballast Passage days, Drydock/Repair days, Off-Hire days (FR-67 — a subset of Employment time, not additional calendar time), and **Unaccounted days** — calendar days in the queried range with no Voyage record at all, surfacing gaps in the historical record the operator hasn't logged yet.
+
+**FR-71:** The Dashboard (FR-42) gains a live status tile: vessels with no open `employment` voyage covering **today** — i.e. currently on a ballast passage, currently in drydock, or with no voyage record at all for today (unaccounted). This is a live check ("what needs attention right now"), distinct from FR-70's historical rollup.
 
 ---
 

@@ -69,6 +69,27 @@ def test_excess_consumption_with_no_replenishment_produces_a_warning(client):
     assert "IFO" in report["warnings"][0]
 
 
+def test_drydock_voyage_suppresses_the_warning_entirely(client):
+    vessel_id = client.post("/vessels", json=vessel_payload()).json()["id"]
+    voyage_id = client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "drydock_repair",
+            "vessel_id": vessel_id,
+            "voyage_number": "DRYDOCK-2026-01",
+            "load_port": "Ust-Luga Yard",
+            "start_date": "2026-05-27",
+        },
+    ).json()["id"]
+    _submit_report(client, vessel_id, voyage_id, "2705", "232,26", "46,108")
+
+    # same excess-consumption shape that would normally trigger a warning (see
+    # test_excess_consumption_with_no_replenishment_produces_a_warning) — suppressed here
+    report = _submit_report(client, vessel_id, voyage_id, "2805", "202,26", "45,708")
+
+    assert report["warnings"] == []
+
+
 def test_a_recent_bunker_replenishment_suppresses_the_warning_for_that_grade(client):
     vessel_id, voyage_id = _create_vessel_and_laden_voyage(client)
     _submit_report(client, vessel_id, voyage_id, "2705", "232,26", "46,108")

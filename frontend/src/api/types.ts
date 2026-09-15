@@ -107,16 +107,19 @@ export interface Fixture extends FixtureCreate {
   brokers: FixtureBrokerRead[]
 }
 
+export type VoyagePurpose = 'employment' | 'ballast_passage' | 'drydock_repair'
+
 export interface VoyageCreate {
-  fixture_id: number
+  voyage_purpose: VoyagePurpose
+  fixture_id?: number | null
   vessel_id: number
   voyage_number: string
   load_port: string
-  discharge_port: string
+  discharge_port?: string | null
   start_date: string
   end_date?: string | null
-  cargo_grade: string
-  cargo_quantity_mt: number
+  cargo_grade?: string | null
+  cargo_quantity_mt?: number | null
   laden: boolean
   ice_notes?: string | null
 }
@@ -124,6 +127,23 @@ export interface VoyageCreate {
 export interface Voyage extends VoyageCreate {
   id: number
   warnings: string[]
+}
+
+export interface FleetUtilizationRow {
+  vessel_id: number
+  vessel_name: string
+  employment_days: number
+  ballast_days: number
+  drydock_days: number
+  off_hire_days: number
+  unaccounted_days: number
+}
+
+export interface CurrentVesselStatusRow {
+  vessel_id: number
+  vessel_name: string
+  status: VoyagePurpose | 'unaccounted'
+  voyage_id: number | null
 }
 
 export interface DailyReportCreate {

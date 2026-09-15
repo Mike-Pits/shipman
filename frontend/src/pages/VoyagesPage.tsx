@@ -3,10 +3,39 @@ import { useTranslation } from 'react-i18next'
 import { listFixtures } from '../api/fixtures'
 import { listVessels } from '../api/vessels'
 import { createVoyage, listVoyages, updateVoyage } from '../api/voyages'
-import type { Fixture, Vessel, Voyage, VoyageCreate } from '../api/types'
+import Badge, { type BadgeTone } from '../components/ui/Badge'
+import type { Fixture, FixtureType, Vessel, Voyage, VoyageCreate, VoyagePurpose } from '../api/types'
+
+const FIXTURE_TYPE_LABEL_KEYS: Record<FixtureType, string> = {
+  voyage_charter: 'fixtures.typeVoyageCharter',
+  time_charter_out: 'fixtures.typeTimeCharterOut',
+  coa: 'fixtures.typeCoa',
+}
+
+const fixtureLabel = (f: Fixture, t: (key: string) => string) =>
+  `${f.charterer} — ${f.charter_party_ref ?? `#${f.id}`} (${t(FIXTURE_TYPE_LABEL_KEYS[f.fixture_type])})`
+
+const PURPOSE_LABEL_KEYS: Record<VoyagePurpose, string> = {
+  employment: 'voyages.purposeEmployment',
+  ballast_passage: 'voyages.purposeBallastPassage',
+  drydock_repair: 'voyages.purposeDrydockRepair',
+}
+
+const PURPOSE_TONES: Record<VoyagePurpose, BadgeTone> = {
+  employment: 'success',
+  ballast_passage: 'warning',
+  drydock_repair: 'neutral',
+}
+
+const LOAD_PORT_LABEL_KEYS: Record<VoyagePurpose, string> = {
+  employment: 'voyages.loadPort',
+  ballast_passage: 'voyages.fromPort',
+  drydock_repair: 'voyages.yardPort',
+}
 
 const EMPTY_FORM: VoyageCreate = {
-  fixture_id: 0,
+  voyage_purpose: 'employment',
+  fixture_id: null,
   vessel_id: 0,
   voyage_number: '',
   load_port: '',
@@ -44,6 +73,10 @@ export default function VoyagesPage() {
     (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
       setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
 
+  const handlePurposeChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    setForm({ ...EMPTY_FORM, voyage_purpose: e.target.value as VoyagePurpose })
+  }
+
   const handleEdit = (voyage: Voyage) => {
     setError(null)
     setEditingId(voyage.id)
@@ -73,6 +106,8 @@ export default function VoyagesPage() {
     }
   }
 
+  const purpose = form.voyage_purpose
+
   return (
     <div>
       <h1>{t('voyages.title')}</h1>
@@ -85,6 +120,7 @@ export default function VoyagesPage() {
             <thead>
               <tr>
                 <th>{t('voyages.columnVoyageNumber')}</th>
+                <th>{t('voyages.columnPurpose')}</th>
                 <th>{t('voyages.columnVessel')}</th>
                 <th>{t('voyages.columnLoadPort')}</th>
                 <th>{t('voyages.columnDischargePort')}</th>
@@ -98,11 +134,14 @@ export default function VoyagesPage() {
               {voyages.map((v) => (
                 <tr key={v.id}>
                   <td>{v.voyage_number}</td>
+                  <td>
+                    <Badge tone={PURPOSE_TONES[v.voyage_purpose]}>{t(PURPOSE_LABEL_KEYS[v.voyage_purpose])}</Badge>
+                  </td>
                   <td>{vesselName(v.vessel_id)}</td>
                   <td>{v.load_port}</td>
-                  <td>{v.discharge_port}</td>
+                  <td>{v.discharge_port ?? '—'}</td>
                   <td>{v.start_date}</td>
-                  <td>{v.cargo_quantity_mt}</td>
+                  <td>{v.cargo_quantity_mt ?? '—'}</td>
                   <td>
                     {v.warnings.map((w, i) => (
                       <p key={i} role="alert">
@@ -126,18 +165,28 @@ export default function VoyagesPage() {
       {editingId !== null && <p role="alert">{t('voyages.editWarning')}</p>}
       <form onSubmit={handleSubmit}>
         <label>
-          {t('voyages.fixture')}
-          <select value={form.fixture_id || ''} onChange={field('fixture_id', true)} required>
-            <option value="" disabled>
-              {t('voyages.selectFixture')}
-            </option>
-            {fixtures.map((f) => (
-              <option key={f.id} value={f.id}>
-                #{f.id} — {f.charterer} ({f.fixture_type})
-              </option>
-            ))}
+          {t('voyages.purpose')}
+          <select value={purpose} onChange={handlePurposeChange} disabled={editingId !== null}>
+            <option value="employment">{t('voyages.purposeEmployment')}</option>
+            <option value="ballast_passage">{t('voyages.purposeBallastPassage')}</option>
+            <option value="drydock_repair">{t('voyages.purposeDrydockRepair')}</option>
           </select>
         </label>
+        {purpose === 'employment' && (
+          <label>
+            {t('voyages.fixture')}
+            <select value={form.fixture_id ?? ''} onChange={field('fixture_id', true)} required>
+              <option value="" disabled>
+                {t('voyages.selectFixture')}
+              </option>
+              {fixtures.map((f) => (
+                <option key={f.id} value={f.id}>
+                  {fixtureLabel(f, t)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
         <label>
           {t('voyages.vessel')}
           <select value={form.vessel_id || ''} onChange={field('vessel_id', true)} required>
@@ -156,13 +205,15 @@ export default function VoyagesPage() {
           <input value={form.voyage_number} onChange={field('voyage_number')} required />
         </label>
         <label>
-          {t('voyages.loadPort')}
+          {t(LOAD_PORT_LABEL_KEYS[purpose])}
           <input value={form.load_port} onChange={field('load_port')} required />
         </label>
-        <label>
-          {t('voyages.dischargePort')}
-          <input value={form.discharge_port} onChange={field('discharge_port')} required />
-        </label>
+        {purpose !== 'drydock_repair' && (
+          <label>
+            {t(purpose === 'ballast_passage' ? 'voyages.toPort' : 'voyages.dischargePort')}
+            <input value={form.discharge_port ?? ''} onChange={field('discharge_port')} required />
+          </label>
+        )}
         <label>
           {t('voyages.startDate')}
           <input value={form.start_date} onChange={field('start_date')} placeholder="YYYY-MM-DD" required />
@@ -171,22 +222,31 @@ export default function VoyagesPage() {
           {t('voyages.endDate')}
           <input value={form.end_date ?? ''} onChange={field('end_date')} placeholder="YYYY-MM-DD" />
         </label>
-        <label>
-          {t('voyages.cargoGrade')}
-          <input value={form.cargo_grade} onChange={field('cargo_grade')} required />
-        </label>
-        <label>
-          {t('voyages.cargoQuantity')}
-          <input type="number" value={form.cargo_quantity_mt} onChange={field('cargo_quantity_mt', true)} required />
-        </label>
-        <label>
-          {t('voyages.laden')}
-          <input
-            type="checkbox"
-            checked={form.laden}
-            onChange={(e) => setForm((f) => ({ ...f, laden: e.target.checked }))}
-          />
-        </label>
+        {purpose === 'employment' && (
+          <>
+            <label>
+              {t('voyages.cargoGrade')}
+              <input value={form.cargo_grade ?? ''} onChange={field('cargo_grade')} required />
+            </label>
+            <label>
+              {t('voyages.cargoQuantity')}
+              <input
+                type="number"
+                value={form.cargo_quantity_mt ?? ''}
+                onChange={field('cargo_quantity_mt', true)}
+                required
+              />
+            </label>
+            <label>
+              {t('voyages.laden')}
+              <input
+                type="checkbox"
+                checked={form.laden}
+                onChange={(e) => setForm((f) => ({ ...f, laden: e.target.checked }))}
+              />
+            </label>
+          </>
+        )}
         <label>
           {t('voyages.iceNsrNotes')}
           <input value={form.ice_notes ?? ''} onChange={field('ice_notes')} />

@@ -133,3 +133,193 @@ def test_claims_status_report_shows_age_in_days(client):
     body = response.json()
     assert len(body) == 1
     assert body[0]["age_days"] == 10
+
+
+def _create_vessel(client):
+    return client.post("/vessels", json=vessel_payload(imo_number=str(next(_next_imo)))).json()["id"]
+
+
+def test_fleet_utilization_splits_employment_ballast_and_drydock_days(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = client.post(
+        "/fixtures",
+        json={
+            "fixture_type": "voyage_charter",
+            "charterer": "Test Charterer",
+            "contract_currency": "RUB",
+            "freight_rate": 25.0,
+            "freight_rate_basis": "per_tonne",
+        },
+    ).json()["id"]
+    client.post(
+        "/voyages",
+        json={
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "voyage_number": "V-001",
+            "load_port": "Ust-Luga",
+            "discharge_port": "Rotterdam",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-06",
+            "cargo_grade": "gasoil",
+            "cargo_quantity_mt": 5000,
+            "laden": True,
+        },
+    )
+    client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": vessel_id,
+            "voyage_number": "BALLAST-001",
+            "load_port": "Rotterdam",
+            "discharge_port": "Ust-Luga",
+            "start_date": "2026-06-06",
+            "end_date": "2026-06-11",
+        },
+    )
+    client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "drydock_repair",
+            "vessel_id": vessel_id,
+            "voyage_number": "DRYDOCK-001",
+            "load_port": "Ust-Luga Yard",
+            "start_date": "2026-06-11",
+            "end_date": "2026-06-16",
+        },
+    )
+
+    response = client.get("/reports/fleet-utilization?start_date=2026-06-01&end_date=2026-06-16")
+
+    assert response.status_code == 200
+    row = next(r for r in response.json() if r["vessel_id"] == vessel_id)
+    assert row["employment_days"] == 5
+    assert row["ballast_days"] == 5
+    assert row["drydock_days"] == 5
+    assert row["unaccounted_days"] == 0
+
+
+def test_fleet_utilization_reports_off_hire_as_a_separate_figure_not_subtracted_from_employment(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = client.post(
+        "/fixtures",
+        json={
+            "fixture_type": "time_charter_out",
+            "charterer": "Test Charterer",
+            "contract_currency": "RUB",
+            "hire_rate": 9000,
+            "hire_rate_basis": "daily",
+            "hire_payment_basis": "advance",
+            "hire_payment_frequency_days": 30,
+        },
+    ).json()["id"]
+    voyage_id = client.post(
+        "/voyages",
+        json={
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "voyage_number": "TC-001",
+            "load_port": "Ust-Luga",
+            "discharge_port": "Ust-Luga",
+            "start_date": "2026-06-01",
+            "end_date": "2026-06-11",
+            "cargo_grade": "n/a",
+            "cargo_quantity_mt": 0,
+            "laden": False,
+        },
+    ).json()["id"]
+    client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-03 00:00:00",
+            "end_datetime": "2026-06-05 00:00:00",
+            "reason": "Main engine repair",
+        },
+    )
+
+    response = client.get("/reports/fleet-utilization?start_date=2026-06-01&end_date=2026-06-11")
+
+    assert response.status_code == 200
+    row = next(r for r in response.json() if r["vessel_id"] == vessel_id)
+    assert row["employment_days"] == 10  # the full voyage span, not reduced
+    assert row["off_hire_days"] == 2
+
+
+def test_fleet_utilization_flags_unaccounted_days_with_no_voyage_record(client):
+    vessel_id = _create_vessel(client)
+
+    response = client.get("/reports/fleet-utilization?start_date=2026-06-01&end_date=2026-06-11")
+
+    assert response.status_code == 200
+    row = next(r for r in response.json() if r["vessel_id"] == vessel_id)
+    assert row["unaccounted_days"] == 10
+    assert row["employment_days"] == 0
+    assert row["ballast_days"] == 0
+    assert row["drydock_days"] == 0
+
+
+def test_current_vessel_status_reflects_todays_open_voyage_per_vessel(client):
+    yesterday = (date.today() - timedelta(days=1)).isoformat()
+
+    employed_vessel = _create_vessel(client)
+    fixture_id = client.post(
+        "/fixtures",
+        json={
+            "fixture_type": "voyage_charter",
+            "charterer": "Test Charterer",
+            "contract_currency": "RUB",
+            "freight_rate": 25.0,
+            "freight_rate_basis": "per_tonne",
+        },
+    ).json()["id"]
+    client.post(
+        "/voyages",
+        json={
+            "fixture_id": fixture_id,
+            "vessel_id": employed_vessel,
+            "voyage_number": "V-001",
+            "load_port": "Ust-Luga",
+            "discharge_port": "Rotterdam",
+            "start_date": yesterday,
+            "cargo_grade": "gasoil",
+            "cargo_quantity_mt": 5000,
+            "laden": True,
+        },
+    )
+
+    ballast_vessel = _create_vessel(client)
+    client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "ballast_passage",
+            "vessel_id": ballast_vessel,
+            "voyage_number": "BALLAST-001",
+            "load_port": "Rotterdam",
+            "discharge_port": "Ust-Luga",
+            "start_date": yesterday,
+        },
+    )
+
+    drydock_vessel = _create_vessel(client)
+    client.post(
+        "/voyages",
+        json={
+            "voyage_purpose": "drydock_repair",
+            "vessel_id": drydock_vessel,
+            "voyage_number": "DRYDOCK-001",
+            "load_port": "Ust-Luga Yard",
+            "start_date": yesterday,
+        },
+    )
+
+    unaccounted_vessel = _create_vessel(client)
+
+    response = client.get("/reports/current-vessel-status")
+
+    assert response.status_code == 200
+    by_vessel = {row["vessel_id"]: row["status"] for row in response.json()}
+    assert by_vessel[employed_vessel] == "employment"
+    assert by_vessel[ballast_vessel] == "ballast_passage"
+    assert by_vessel[drydock_vessel] == "drydock_repair"
+    assert by_vessel[unaccounted_vessel] == "unaccounted"
