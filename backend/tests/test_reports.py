@@ -1,4 +1,5 @@
 from tests.test_vessels import vessel_payload
+from tests.test_voyage_estimates import estimate_payload
 
 
 _next_imo = iter(range(9000000, 9999999))
@@ -70,22 +71,10 @@ def test_voyage_pnl_sums_income_and_expense_payments_linked_to_the_voyage(client
 def test_voyage_pnl_reconciles_against_its_originating_estimate(client):
     estimate = client.post(
         "/voyage-estimates",
-        json={
-            "vessel_id": None,
-            "load_port": "Ust-Luga",
-            "discharge_port": "Rotterdam",
-            "laycan_start": "2026-06-01",
-            "laycan_end": "2026-06-05",
-            "cargo_grade": "gasoil",
-            "estimated_cargo_quantity_mt": 5000,
-            "estimated_rate": 30,
-            "estimated_rate_basis": "per_tonne",
-            "currency": "RUB",
-            "estimated_bunker_consumption_mt": 200,
-            "estimated_bunker_cost": 90000,
-            "estimated_port_costs": 10000,
-            "estimated_duration_days": 10,
-        },
+        json=estimate_payload(
+            currency="RUB", port_charges=0, bunker_surcharge=0, extra_sea_days=10,
+            cost_items=[{"description": "Bunkers", "amount": 90000}, {"description": "Port", "amount": 10000}],
+        ),
     ).json()
     # estimated_net_result = (30*5000) - (90000+10000) = 150000 - 100000 = 50000
     fixture = client.post(

@@ -213,8 +213,17 @@ def test_fixture_rejects_a_contract_currency_other_than_rub_or_usd(client):
     assert response.status_code == 422
 
 
-def test_fixture_charter_party_ref_rejects_more_than_15_characters(client):
-    payload = voyage_charter_payload(charter_party_ref="THIS-REF-IS-WAY-TOO-LONG")
+def test_fixture_charter_party_ref_accepts_up_to_100_characters(client):
+    payload = voyage_charter_payload(charter_party_ref="R" * 100)
+
+    response = client.post("/fixtures", json=payload)
+
+    assert response.status_code == 201
+    assert response.json()["charter_party_ref"] == "R" * 100
+
+
+def test_fixture_charter_party_ref_rejects_more_than_100_characters(client):
+    payload = voyage_charter_payload(charter_party_ref="R" * 101)
 
     response = client.post("/fixtures", json=payload)
 

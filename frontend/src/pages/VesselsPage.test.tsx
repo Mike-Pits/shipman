@@ -259,4 +259,48 @@ describe('VesselsPage', () => {
     expect(body.dwt).toBe(0)
     expect(body.ice_class).toBe('Arc4')
   })
+  it('lets the operator edit the voyage-calculator consumption profile and sends it with the PUT', async () => {
+    const user = userEvent.setup()
+    const vessel = {
+      id: 1,
+      name: 'SP Baltic Trader',
+      imo_number: '9123456',
+      flag: 'Russia',
+      year_built: 2015,
+      vessel_type: 'clean/product tanker',
+      dwt: 8500,
+      loa: 120,
+      beam: 18,
+      draft: 7,
+      cargo_tank_capacity_cbm: 9800,
+      ice_class: 'Arc4',
+      engine_power_kw: 4500,
+      fuel_consumption_profiles: [],
+      sea_consumption: [{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }],
+      port_consumption: [],
+    }
+    const fetchMock = mockFetchSequence([
+      { status: 200, body: [vessel] },
+      { status: 200, body: vessel },
+      { status: 200, body: [vessel] },
+    ])
+
+    render(<VesselsPage />)
+    await user.click(await screen.findByRole('button', { name: /^edit$/i }))
+
+    expect(screen.getByLabelText('Laden Speed (kt)')).toHaveValue(12)
+    await user.click(screen.getByRole('button', { name: /add fuel grade — in port — loading/i }))
+    await user.type(screen.getByLabelText('In port — loading Fuel grade'), 'МГО')
+    await user.type(screen.getByLabelText('In port — loading Consumption (MT/day)'), '5')
+    await user.click(screen.getByRole('button', { name: /update vessel/i }))
+
+    const putCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
+      if (!call) throw new Error('no PUT call yet')
+      return call
+    })
+    const body = JSON.parse(putCall[1].body as string)
+    expect(body.sea_consumption).toEqual([{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }])
+    expect(body.port_consumption).toEqual([{ kind: 'port_load', grade: 'МГО', consumption_mt_per_day: 5 }])
+  })
 })

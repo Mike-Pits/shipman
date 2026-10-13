@@ -12,6 +12,22 @@ export interface FuelConsumptionProfileRead extends FuelConsumptionProfile {
   id: number
 }
 
+export type SeaMode = 'laden' | 'ballast' | 'eco'
+export type PortConsumptionKind = 'port_load' | 'port_discharge' | 'inerting'
+
+export interface SeaConsumption {
+  mode: SeaMode
+  grade: string
+  speed_kt: number
+  consumption_mt_per_day: number
+}
+
+export interface PortConsumption {
+  kind: PortConsumptionKind
+  grade: string
+  consumption_mt_per_day: number
+}
+
 export interface VesselCreate {
   name: string
   imo_number: string
@@ -26,11 +42,20 @@ export interface VesselCreate {
   ice_class: string
   engine_power_kw: number
   fuel_consumption_profiles: FuelConsumptionProfile[]
+  sea_consumption?: SeaConsumption[]
+  port_consumption?: PortConsumption[]
 }
 
 export interface Vessel extends VesselCreate {
   id: number
   fuel_consumption_profiles: FuelConsumptionProfileRead[]
+  sea_consumption: SeaConsumption[]
+  port_consumption: PortConsumption[]
+}
+
+export interface Port {
+  id: number
+  name: string
 }
 
 export type FixtureType = 'voyage_charter' | 'time_charter_out' | 'coa'
@@ -305,34 +330,90 @@ export interface VoyageTce extends VoyagePnl {
 }
 
 export type EstimateStatus = 'draft' | 'under_negotiation' | 'fixed' | 'declined'
-export type RateBasis = 'per_tonne' | 'lump_sum'
+export type FreightMode = 'per_mt' | 'lumpsum'
+export type StopType = 'load' | 'discharge'
+export type LaytimeUnit = 'hours' | 'days' | 'mt_per_hour' | 'mt_per_day'
+export type LaytimeBasis = 'CQD' | 'WIBON' | 'WIPON' | 'FIO' | 'SHINC' | 'SHEX'
+
+export interface EstimatePortStop {
+  port_name: string
+  stop_type: StopType
+  distance_nm: number
+  cargo_quantity_mt: number
+  laytime_value: number
+  laytime_unit: LaytimeUnit
+  laytime_basis: LaytimeBasis
+  rate_mt_per_day: number
+}
+
+export interface EstimateCargoLot {
+  grade: string
+  quantity_mt: number
+  freight_rate: number
+}
+
+export interface EstimateFuelPrice {
+  grade: string
+  price_per_mt: number
+}
+
+export interface EstimateCostItem {
+  description: string
+  amount: number
+}
 
 export interface VoyageEstimateCreate {
-  vessel_id?: number | null
-  load_port: string
-  discharge_port: string
-  laycan_start: string
-  laycan_end: string
-  cargo_grade: string
-  estimated_cargo_quantity_mt: number
-  estimated_rate: number
-  estimated_rate_basis: RateBasis
+  name: string
+  vessel_id: number | null
   currency: Currency
-  estimated_bunker_consumption_mt: number
-  estimated_bunker_cost: number
-  estimated_port_costs: number
-  estimated_duration_days: number
+  laycan_start: string | null
+  laycan_end: string | null
+  freight_mode: FreightMode
+  lumpsum_freight: number
+  sea_mode: SeaMode
+  extra_sea_days: number
+  extra_costs: number
+  canal_fees: number
+  port_charges: number
+  agent_fees: number
+  bunker_surcharge: number
+  demurrage_rate: number
+  port_stops: EstimatePortStop[]
+  cargo_lots: EstimateCargoLot[]
+  fuel_prices: EstimateFuelPrice[]
+  cost_items: EstimateCostItem[]
+}
+
+export interface EstimateResults {
+  total_distance_nm: number
+  sea_days: number
+  port_days: number
+  load_days: number
+  discharge_days: number
+  total_voyage_days: number
+  effective_sea_mode: SeaMode
+  fuel: Record<string, { quantity_mt: number; cost: number }>
+  total_fuel_cost: number
+  freight_revenue: number
+  other_costs: number
+  extra_items_total: number
+  allowed_laytime_days: number
+  excess_days: number
+  demurrage: number
+  total_costs: number
+  net_result: number
+  tce_per_day: number
+  warnings: string[]
 }
 
 export interface VoyageEstimate extends VoyageEstimateCreate {
   id: number
   status: EstimateStatus
   fixture_id: number | null
+  baseline_net_result: number | null
+  baseline_tce_per_day: number | null
+  results: EstimateResults
   warnings: string[]
-  estimated_revenue: number
-  estimated_costs: number
-  estimated_net_result: number
-  estimated_tce_per_day: number
 }
 
 export type VettingStatus = 'approved' | 'pending' | 'expired' | 'failed'

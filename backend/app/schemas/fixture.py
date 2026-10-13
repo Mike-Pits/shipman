@@ -29,7 +29,7 @@ class FixtureCreate(BaseModel):
     vat_rate_percent: float | None = None
 
     date_concluded: str | None = None
-    charter_party_ref: str | None = Field(default=None, max_length=15)
+    charter_party_ref: str | None = Field(default=None, max_length=100)
     charter_party_type: str | None = None
 
     # Voyage Charter fields (FR-07)

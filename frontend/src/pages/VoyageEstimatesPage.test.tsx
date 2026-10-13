@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from '@testing-library/react'
+import { render, screen, waitFor, within } from '@testing-library/react'
 import userEvent from '@testing-library/user-event'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import VoyageEstimatesPage from './VoyageEstimatesPage'
@@ -24,49 +24,91 @@ function mockFetchByUrl(handlers: Record<string, Array<{ status: number; body: u
 
 beforeEach(() => {
   vi.unstubAllGlobals()
+  window.scrollTo = vi.fn()
 })
 
-const VESSEL = { id: 1, name: 'MV Arctic', imo_number: '9123456', ice_class: 'Arc4' }
+const VESSEL = {
+  id: 1,
+  name: 'MV Arctic',
+  imo_number: '9123456',
+  ice_class: 'Arc4',
+  sea_consumption: [{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }],
+  port_consumption: [{ kind: 'port_load', grade: 'VLSFO', consumption_mt_per_day: 5 }],
+}
+
+const RESULTS = {
+  total_distance_nm: 1728,
+  sea_days: 6,
+  port_days: 4,
+  load_days: 2,
+  discharge_days: 2,
+  total_voyage_days: 10,
+  effective_sea_mode: 'laden',
+  fuel: { MGO: { quantity_mt: 166, cost: 116200 } },
+  total_fuel_cost: 116200,
+  freight_revenue: 150000,
+  other_costs: 20000,
+  extra_items_total: 0,
+  allowed_laytime_days: 4,
+  excess_days: 0,
+  demurrage: 0,
+  total_costs: 136200,
+  net_result: 13800,
+  tce_per_day: 1380,
+  warnings: [],
+}
 
 const SAMPLE_ESTIMATE = {
   id: 1,
+  name: 'UL-RTM June',
   vessel_id: null,
-  load_port: 'Ust-Luga',
-  discharge_port: 'Rotterdam',
+  currency: 'USD',
   laycan_start: '2026-06-01',
   laycan_end: '2026-06-05',
-  cargo_grade: 'gasoil',
-  estimated_cargo_quantity_mt: 5000,
-  estimated_rate: 30,
-  estimated_rate_basis: 'per_tonne',
-  currency: 'USD',
-  estimated_bunker_consumption_mt: 200,
-  estimated_bunker_cost: 110000,
-  estimated_port_costs: 20000,
-  estimated_duration_days: 10,
+  freight_mode: 'per_mt',
+  lumpsum_freight: 0,
+  sea_mode: 'laden',
+  extra_sea_days: 0,
+  extra_costs: 0,
+  canal_fees: 0,
+  port_charges: 20000,
+  agent_fees: 0,
+  bunker_surcharge: 0,
+  demurrage_rate: 0,
   status: 'draft',
   fixture_id: null,
+  baseline_net_result: null,
+  baseline_tce_per_day: null,
+  port_stops: [
+    { port_name: 'Ust-Luga', stop_type: 'load', distance_nm: 0, cargo_quantity_mt: 5000, laytime_value: 2, laytime_unit: 'days', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
+    { port_name: 'Rotterdam', stop_type: 'discharge', distance_nm: 1728, cargo_quantity_mt: 5000, laytime_value: 48, laytime_unit: 'hours', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
+  ],
+  cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 30 }],
+  fuel_prices: [{ grade: 'MGO', price_per_mt: 700 }],
+  cost_items: [],
+  results: RESULTS,
   warnings: [],
-  estimated_revenue: 150000,
-  estimated_costs: 130000,
-  estimated_net_result: 20000,
-  estimated_tce_per_day: 2000,
 }
 
+const baseHandlers = (estimates: unknown[]) => ({
+  '/voyage-estimates': [{ status: 200, body: estimates }],
+  '/vessels': [{ status: 200, body: [VESSEL] }],
+  '/ports': [{ status: 200, body: [{ id: 1, name: 'Ust-Luga' }] }],
+})
+
 describe('VoyageEstimatesPage', () => {
-  it('renders the list with computed TCE shown', async () => {
-    mockFetchByUrl({
-      '/voyage-estimates': [{ status: 200, body: [SAMPLE_ESTIMATE] }],
-      '/vessels': [{ status: 200, body: [VESSEL] }],
-    })
+  it('renders the list with route, days and calculated TCE', async () => {
+    mockFetchByUrl(baseHandlers([SAMPLE_ESTIMATE]))
 
     render(<VoyageEstimatesPage />)
 
-    expect(await screen.findByText('Ust-Luga')).toBeInTheDocument()
-    expect(screen.getByText('2000')).toBeInTheDocument()
+    expect(await screen.findByText('UL-RTM June')).toBeInTheDocument()
+    expect(screen.getByText('Ust-Luga → Rotterdam')).toBeInTheDocument()
+    expect(screen.getByText(/1,?380 USD/)).toBeInTheDocument()
+    expect(screen.getByText('10')).toBeInTheDocument()
   })
 
-  it('lets the operator create a voyage estimate', async () => {
+  it('lets the operator build a multi-port estimate and save it', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchByUrl({
       '/voyage-estimates': [
@@ -75,55 +117,121 @@ describe('VoyageEstimatesPage', () => {
         { status: 200, body: [SAMPLE_ESTIMATE] },
       ],
       '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
     })
 
     render(<VoyageEstimatesPage />)
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
 
-    await user.type(screen.getByLabelText(/load port/i), 'Ust-Luga')
-    await user.type(screen.getByLabelText(/discharge port/i), 'Rotterdam')
-    await user.type(screen.getByLabelText(/laycan start/i), '2026-06-01')
-    await user.type(screen.getByLabelText(/laycan end/i), '2026-06-05')
-    await user.type(screen.getByLabelText(/cargo grade/i), 'gasoil')
-    await user.type(screen.getByLabelText(/cargo quantity/i), '5000')
-    await user.type(screen.getByLabelText(/^rate$/i), '30')
-    await userEvent.selectOptions(screen.getByLabelText(/rate basis/i), 'per_tonne')
-    await user.selectOptions(screen.getByLabelText(/^currency/i), 'USD')
-    await user.type(screen.getByLabelText(/bunker consumption/i), '200')
-    await user.type(screen.getByLabelText(/bunker cost/i), '110000')
-    await user.type(screen.getByLabelText(/port costs/i), '20000')
-    await user.type(screen.getByLabelText(/duration/i), '10')
-    await user.click(screen.getByRole('button', { name: /create estimate/i }))
+    await user.type(screen.getByLabelText('Estimate Name'), 'UL-RTM June')
+    await user.selectOptions(screen.getByLabelText('Vessel'), '1')
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+    await user.type(screen.getByLabelText('Cargo (MT) 1'), '5000')
+    await user.click(screen.getByRole('button', { name: '+ Add Port' }))
+    await user.type(screen.getByLabelText('Port 2'), 'Rotterdam')
+    await user.selectOptions(screen.getByLabelText('Type 2'), 'discharge')
+    await user.type(screen.getByLabelText('Dist. (NM) 2'), '1728')
+    await user.type(screen.getByLabelText('Cargo Grade 1'), 'gasoil')
+    await user.type(screen.getByLabelText('Qty (MT) 1'), '5000')
+    await user.type(screen.getByLabelText('Freight Rate 1'), '30')
+    await user.type(screen.getByLabelText('Price MGO'), '700')
+    await user.click(screen.getByRole('button', { name: 'Save Estimate' }))
 
     const postCall = await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
       if (!call) throw new Error('no POST call yet')
       return call
     })
+    expect(postCall[0]).toContain('/voyage-estimates')
     const body = JSON.parse(postCall[1]!.body as string)
     expect(body).toMatchObject({
-      load_port: 'Ust-Luga',
-      discharge_port: 'Rotterdam',
-      estimated_rate: 30,
-      estimated_rate_basis: 'per_tonne',
+      name: 'UL-RTM June',
+      vessel_id: 1,
+      currency: 'USD',
+      freight_mode: 'per_mt',
+      cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 30 }],
+      fuel_prices: [{ grade: 'MGO', price_per_mt: 700 }],
     })
+    expect(body.port_stops.map((s: { port_name: string }) => s.port_name)).toEqual(['Ust-Luga', 'Rotterdam'])
+    expect(body.port_stops[1]).toMatchObject({ stop_type: 'discharge', distance_nm: 1728 })
+    expect(await screen.findByRole('region', { name: 'Voyage Results' })).toBeInTheDocument()
+  })
+
+  it('calculates without saving and shows the results panel', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
+      '/voyage-estimates': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+    await user.click(screen.getByRole('button', { name: 'Calculate Voyage' }))
+
+    const panel = await screen.findByRole('region', { name: 'Voyage Results' })
+    expect(within(panel).getByText(/1,?380 USD/)).toBeInTheDocument()
+    expect(within(panel).getByText('MGO')).toBeInTheDocument()
+    expect(within(panel).getByText('No demurrage — within laytime')).toBeInTheDocument()
+    expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/voyage-estimates'))).toBe(true) // initial list only
+    expect(fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(1)
+  })
+
+  it('hides the cargo lots in lumpsum mode and sends only the lumpsum freight', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
+      '/voyage-estimates': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await user.click(screen.getByLabelText('Lumpsum'))
+    expect(screen.queryByLabelText('Qty (MT) 1')).not.toBeInTheDocument()
+    await user.type(screen.getByLabelText(/Lumpsum Freight/), '200000')
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+    await user.click(screen.getByRole('button', { name: 'Calculate Voyage' }))
+
+    const call = await waitFor(() => {
+      const c = fetchMock.mock.calls.find(([, o]) => o?.method === 'POST')
+      if (!c) throw new Error('no POST yet')
+      return c
+    })
+    expect(JSON.parse(call[1]!.body as string)).toMatchObject({ freight_mode: 'lumpsum', lumpsum_freight: 200000, cargo_lots: [] })
+  })
+
+  it('lists a price field for every grade in the vessel profile', async () => {
+    const user = userEvent.setup()
+    mockFetchByUrl(baseHandlers([]))
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    await user.selectOptions(screen.getByLabelText('Vessel'), '1')
+
+    expect(screen.getByLabelText('Price MGO')).toBeInTheDocument()
+    expect(screen.getByLabelText('Price VLSFO')).toBeInTheDocument()
   })
 
   it('lets the operator move an estimate into negotiation', async () => {
     const user = userEvent.setup()
     mockFetchByUrl({
-      '/voyage-estimates/1/status': [
-        { status: 200, body: { ...SAMPLE_ESTIMATE, status: 'under_negotiation' } },
-      ],
+      '/voyage-estimates/1/status': [{ status: 200, body: { ...SAMPLE_ESTIMATE, status: 'under_negotiation' } }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'under_negotiation' }] },
       ],
       '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
     })
 
     render(<VoyageEstimatesPage />)
-    await screen.findByText('Ust-Luga')
+    await screen.findByText('UL-RTM June')
 
     await user.click(screen.getByRole('button', { name: /negotiate/i }))
 
@@ -139,10 +247,11 @@ describe('VoyageEstimatesPage', () => {
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'declined' }] },
       ],
       '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
     })
 
     render(<VoyageEstimatesPage />)
-    await screen.findByText('Ust-Luga')
+    await screen.findByText('UL-RTM June')
 
     await user.click(screen.getByRole('button', { name: /^decline$/i }))
 
@@ -158,10 +267,11 @@ describe('VoyageEstimatesPage', () => {
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'fixed', fixture_id: 9 }] },
       ],
       '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
     })
 
     render(<VoyageEstimatesPage />)
-    await screen.findByText('Ust-Luga')
+    await screen.findByText('UL-RTM June')
 
     await user.click(screen.getByRole('button', { name: /^promote$/i }))
     await user.type(screen.getByLabelText(/charterer/i), 'Test Charterer')
@@ -178,6 +288,7 @@ describe('VoyageEstimatesPage', () => {
       charterer: 'Test Charterer',
       load_port: 'Ust-Luga',
       discharge_port: 'Rotterdam',
+      cargo_grade: 'gasoil',
       freight_rate: 30,
       freight_rate_basis: 'per_tonne',
     })
@@ -185,21 +296,15 @@ describe('VoyageEstimatesPage', () => {
   })
 
   it('shows a vetting warning when the assigned vessel is commercially unfixable', async () => {
-    mockFetchByUrl({
-      '/voyage-estimates': [
+    mockFetchByUrl(
+      baseHandlers([
         {
-          status: 200,
-          body: [
-            {
-              ...SAMPLE_ESTIMATE,
-              vessel_id: 1,
-              warnings: ["This vessel's vetting status is expired or failed — it may be commercially unfixable"],
-            },
-          ],
+          ...SAMPLE_ESTIMATE,
+          vessel_id: 1,
+          warnings: ["This vessel's vetting status is expired or failed — it may be commercially unfixable"],
         },
-      ],
-      '/vessels': [{ status: 200, body: [VESSEL] }],
-    })
+      ]),
+    )
 
     render(<VoyageEstimatesPage />)
 
@@ -208,25 +313,30 @@ describe('VoyageEstimatesPage', () => {
 
   it('lets the operator correct an estimate and submits a PUT', async () => {
     const user = userEvent.setup()
-    const correctedEstimate = { ...SAMPLE_ESTIMATE, estimated_rate: 35, estimated_revenue: 175000, estimated_net_result: 45000 }
+    const corrected = {
+      ...SAMPLE_ESTIMATE,
+      cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 35 }],
+      results: { ...RESULTS, freight_revenue: 175000, net_result: 38800, tce_per_day: 3880 },
+    }
     const fetchMock = mockFetchByUrl({
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
-        { status: 200, body: correctedEstimate },
-        { status: 200, body: [correctedEstimate] },
+        { status: 200, body: corrected },
+        { status: 200, body: [corrected] },
       ],
       '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
     })
 
     render(<VoyageEstimatesPage />)
-    await screen.findByText('Ust-Luga')
+    await screen.findByText('UL-RTM June')
 
     await user.click(screen.getByRole('button', { name: /^edit$/i }))
 
-    const rateInput = screen.getByLabelText(/^rate$/i)
-    await user.clear(rateInput)
-    await user.type(rateInput, '35')
-    await user.click(screen.getByRole('button', { name: /update estimate/i }))
+    const rate = screen.getByLabelText('Freight Rate 1')
+    await user.clear(rate)
+    await user.type(rate, '35')
+    await user.click(screen.getByRole('button', { name: 'Update Estimate' }))
 
     const putCall = await waitFor(() => {
       const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'PUT')
@@ -234,9 +344,112 @@ describe('VoyageEstimatesPage', () => {
       return call
     })
     expect(putCall[0]).toContain('/voyage-estimates/1')
-    const body = JSON.parse(putCall[1]!.body as string)
-    expect(body.estimated_rate).toBe(35)
+    expect(JSON.parse(putCall[1]!.body as string).cargo_lots[0].freight_rate).toBe(35)
+    expect(await screen.findAllByText(/3,?880 USD/)).toHaveLength(2) // list row + results panel
+  })
 
-    expect(await screen.findByText('45000')).toBeInTheDocument()
+  it('duplicates an estimate under a "(copy)" name', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl({
+      '/voyage-estimates': [
+        { status: 200, body: [SAMPLE_ESTIMATE] },
+        { status: 201, body: { ...SAMPLE_ESTIMATE, id: 2, name: 'UL-RTM June (copy)' } },
+        { status: 200, body: [SAMPLE_ESTIMATE] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await screen.findByText('UL-RTM June')
+    await user.click(screen.getByRole('button', { name: 'Duplicate' }))
+
+    const call = await waitFor(() => {
+      const c = fetchMock.mock.calls.find(([, o]) => o?.method === 'POST')
+      if (!c) throw new Error('no POST yet')
+      return c
+    })
+    const body = JSON.parse(call[1]!.body as string)
+    expect(body.name).toBe('UL-RTM June (copy)')
+    expect(body.port_stops).toHaveLength(2)
+  })
+
+  it('deletes an unfixed estimate after confirmation, but offers no delete for a fixed one', async () => {
+    const user = userEvent.setup()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const fixed = { ...SAMPLE_ESTIMATE, id: 2, name: 'Fixed one', status: 'fixed', fixture_id: 5 }
+    const fetchMock = mockFetchByUrl({
+      '/voyage-estimates': [
+        { status: 200, body: [SAMPLE_ESTIMATE, fixed] },
+        { status: 204, body: null },
+        { status: 200, body: [fixed] },
+      ],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await screen.findByText('UL-RTM June')
+    expect(screen.getAllByRole('button', { name: 'Delete' })).toHaveLength(1)
+
+    await user.click(screen.getByRole('button', { name: 'Delete' }))
+
+    await waitFor(() =>
+      expect(fetchMock.mock.calls.some(([, o]) => o?.method === 'DELETE')).toBe(true),
+    )
+  })
+
+  it('opens a fixed estimate read-only', async () => {
+    const user = userEvent.setup()
+    const fixed = { ...SAMPLE_ESTIMATE, status: 'fixed', fixture_id: 5 }
+    mockFetchByUrl(baseHandlers([fixed]))
+
+    render(<VoyageEstimatesPage />)
+    await screen.findByText('UL-RTM June')
+    await user.click(screen.getByRole('button', { name: 'View' }))
+
+    expect(screen.getByText(/frozen baseline/i)).toBeInTheDocument()
+    expect(screen.queryByRole('button', { name: 'Update Estimate' })).not.toBeInTheDocument()
+    expect(screen.getByLabelText('Estimate Name')).toBeDisabled()
+  })
+
+  it('adds a port to the suggestion list', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl({
+      '/ports': [
+        { status: 200, body: [] },
+        { status: 201, body: { id: 3, name: 'Dudinka' } },
+        { status: 200, body: [{ id: 3, name: 'Dudinka' }] },
+      ],
+      '/voyage-estimates': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    await user.type(screen.getByLabelText('New port'), 'Dudinka')
+    await user.click(screen.getByRole('button', { name: 'Add Port' }))
+
+    expect(await screen.findByText('Dudinka')).toBeInTheDocument()
+    const post = fetchMock.mock.calls.find(([url, o]) => url.endsWith('/ports') && o?.method === 'POST')!
+    expect(JSON.parse(post[1]!.body as string)).toEqual({ name: 'Dudinka' })
+  })
+
+  it('shows a readable error when the server rejects the estimate', async () => {
+    const user = userEvent.setup()
+    mockFetchByUrl({
+      '/voyage-estimates/calculate': [
+        { status: 422, body: { detail: [{ loc: ['body', 'port_stops'], msg: 'Field required', type: 'missing' }] } },
+      ],
+      '/voyage-estimates': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    await user.click(screen.getByRole('button', { name: 'Calculate Voyage' }))
+
+    expect(await screen.findByText(/port_stops: Field required/)).toBeInTheDocument()
   })
 })

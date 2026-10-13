@@ -156,19 +156,25 @@ Multi-user roles (Master with vessel-scoped daily-report access, Finance read-on
 
 **FR-01:** System shall allow registering vessels with: name, IMO number, flag, year built, vessel type (clean/product tanker), DWT, LOA, beam, draft, cargo tank capacity (cbm), **ice class notation**, engine power, and fuel consumption profiles for IFO/MGO across operational modes (laden, ballast, idle/anchor, **discharging**).
 
+**FR-01a:** A vessel also carries a **voyage-calculator consumption profile** used by Voyage Estimates (FR-03): per fuel grade, sea-passage speed (kt) and consumption (MT/day) for laden, ballast and eco modes (first row of a mode = passage speed), plus in-port loading, in-port discharging and inerting consumption per grade (MT/day). Fuel-grade names are normalized (case, whitespace, dash variants, Cyrillic look-alikes such as `МГО` → `MGO`) so the same grade entered two ways merges. This is separate from the IFO/MGO daily-report baseline in FR-01.
+
 **FR-02:** Vessel changes are **not** audit-logged (matches v1 — specification/config data, not transactional).
 
 ### 4.2 Voyage Estimate (Pre-Fixture)
 
-**FR-03:** System shall allow creating a Voyage Estimate for a candidate voyage, independent of any concluded fixture, capturing: candidate vessel (optional — may be estimated before a specific vessel is assigned), load/discharge ports, laycan window, cargo/grade, estimated cargo quantity, estimated freight or hire rate, estimated bunker consumption and cost, estimated port costs (as a lump provisional figure), estimated voyage duration (days), and resulting estimated TCE.
+**FR-03:** System shall allow creating a Voyage Estimate for a candidate voyage, independent of any concluded fixture. An estimate is a full preliminary TCE calculation (it replaces the standalone `voyage-calculator.html`, GitHub issue #2) capturing: a name; the candidate vessel (optional — may be estimated before a vessel is assigned, in which case sea time and fuel are not calculated and the result says so); currency (RUB/USD); laycan window (optional); an **itinerary of up to 10 port stops** in sequence, each with port name, load/discharge type, distance from the previous port (NM), cargo quantity, laytime (hours, days, MT/hour or MT/day, with a laytime basis CQD/WIBON/WIPON/FIO/SHINC/SHEX) and an optional working rate (MT/day, which overrides laytime for port time); sea mode (laden/ballast/eco) and extra sea days; freight as **per-MT** (up to 3 cargo lots, each grade/quantity/rate) or **lumpsum**; a per-grade fuel price; canal fees, port charges, agent fees, bunker surcharge, an extra lump-sum cost and any number of custom cost lines; and a demurrage rate per day.
+
+**FR-03a:** Results are computed from those inputs by `services/voyage_calc.py` and returned on every read (never stored): total distance; sea days (distance ÷ (speed × 24) + extra days; speed is the first row of the vessel's selected sea mode, falling back to laden with a warning); port days per stop; load/discharge days; total voyage days; fuel consumption and cost per grade (sea, load, discharge and inerting consumption from the vessel profile — FR-01a); total costs; freight revenue; demurrage = days beyond allowed laytime × demurrage rate; net result and **TCE per day = (freight − total costs) ÷ total voyage days**. All day figures use the 3-decimal rule (FR-72). A "Calculate" action returns results for unsaved inputs without saving. Missing fuel prices are flagged, not silently costed at zero.
+
+**FR-03b:** Estimates can be duplicated, printed (browser print of the results panel) and deleted while not fixed. A fixed estimate cannot be edited or deleted. Operator-maintained **port list** (`ports`) supplies itinerary port-name suggestions.
 
 **FR-04:** Estimate status workflow: `draft` → `under negotiation` → `fixed` (promoted to a Fixture) or `declined`.
 
-**FR-05:** When an Estimate is promoted to a Fixture (FR-06), its projected figures are retained and linked, forming the baseline that the eventual Voyage P&L (FR-47, §4.14) is reconciled against.
+**FR-05:** When an Estimate is promoted to a Fixture (FR-06), its net result and TCE are **frozen** on the estimate (`baseline_net_result`, `baseline_tce_per_day`) and the estimate is linked, forming the baseline that the eventual Voyage P&L (FR-47, §4.14) is reconciled against; later edits to the vessel's consumption profile do not move this baseline.
 
 ### 4.3 Fixture Management
 
-**FR-06:** System shall record Fixtures of three types: **Voyage Charter**, **Time Charter Out**, **COA**. Time Charter In is not supported (this operator does not charter tonnage in). Every Fixture, regardless of type, also carries three universal fields: **date concluded** (the date the deal was struck), **charter party reference** (the deal's ref/C-P number, up to 15 characters), and **charter party type** (the proforma document used, e.g. ASBATANKVOY, SHELLVOY6, GENCON — free text). All three are optional to accommodate historical fixtures where this detail wasn't recorded.
+**FR-06:** System shall record Fixtures of three types: **Voyage Charter**, **Time Charter Out**, **COA**. Time Charter In is not supported (this operator does not charter tonnage in). Every Fixture, regardless of type, also carries three universal fields: **date concluded** (the date the deal was struck), **charter party reference** (the deal's ref/C-P number, up to 100 characters), and **charter party type** (the proforma document used, e.g. ASBATANKVOY, SHELLVOY6, GENCON — free text). All three are optional to accommodate historical fixtures where this detail wasn't recorded.
 
 **FR-06a:** Every Fixture also carries VAT (НДС) terms for its rate (freight, hire, or rate per tonne), regardless of type or currency: a **VAT-applicable** toggle (default off), and — only when applicable — a **treatment** (rate already **includes** VAT, or VAT is **added on top** of the stated rate) and an operator-entered **VAT rate %** (not hardcoded, since the rate is set by tax law and has changed over time; 0% is a valid entry for zero-rated transactions). Where the system automatically turns a fixture's rate into a monetary amount — off-hire deduction (FR-35) — "added on top" terms increase the computed amount by the VAT rate; "included" terms leave it unchanged, since the agreed rate is already the final figure. Hire and Freight invoices (§4.16, FR-60) read these terms directly when computing an invoice total; for other manually-entered payments the operator applies them by hand.
 
@@ -359,7 +365,9 @@ Not every day a vessel is on the books is spent under a fixture. A vessel can be
 | Table | Purpose | Audit Logged? | Status vs. v1 |
 |---|---|---|---|
 | `vessels` | Ship specs incl. ice class | NO | Extended (ice class, vetting FK, discharging fuel mode) |
-| `voyage_estimates` | Pre-fixture projections | YES | **New** |
+| `voyage_estimates` (+ `estimate_port_stops`, `estimate_cargo_lots`, `estimate_fuel_prices`, `estimate_cost_items`) | Pre-fixture voyage calculator inputs; results computed on read; baseline frozen on promotion | YES (header only) | **New** |
+| `vessel_sea_consumption`, `vessel_port_consumption` | Per-grade consumption profile feeding the estimate calculator | NO | **New** |
+| `ports` | Operator-maintained port-name list | NO | **New** |
 | `fixtures` | Voyage Charter / TC Out / COA (replaces `charter_parties`) | YES | Renamed + `fixture_type` and configurable hire payment terms added |
 | `voyages` | Individual voyages/employment periods | YES | Unchanged fields; boundary is now an explicit operator choice (FR-14) |
 | `daily_reports` | DISP-01 messages | YES | Extended (adds IMAP as an ingestion source alongside manual paste) |

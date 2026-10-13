@@ -28,12 +28,9 @@ def _estimate_reconciliation(voyage: Voyage, net_result: float, db: Session) -> 
     if estimate is None:
         return {}
 
-    if estimate.estimated_rate_basis == "per_tonne":
-        estimated_revenue = estimate.estimated_rate * estimate.estimated_cargo_quantity_mt
-    else:
-        estimated_revenue = estimate.estimated_rate
-    estimated_costs = estimate.estimated_bunker_cost + estimate.estimated_port_costs
-    estimated_net_result = round(estimated_revenue - estimated_costs, 2)
+    estimated_net_result = estimate.baseline_net_result
+    if estimated_net_result is None:
+        return {}
 
     return {
         "estimated_net_result": estimated_net_result,

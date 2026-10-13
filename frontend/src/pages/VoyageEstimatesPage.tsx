@@ -1,32 +1,75 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
+  calculateVoyageEstimate,
   createVoyageEstimate,
+  deleteVoyageEstimate,
   listVoyageEstimates,
   promoteVoyageEstimate,
   updateVoyageEstimate,
   updateVoyageEstimateStatus,
 } from '../api/voyageEstimates'
+import { createPort, deletePort, listPorts } from '../api/ports'
 import { listVessels } from '../api/vessels'
 import Badge, { type BadgeTone } from '../components/ui/Badge'
-import type { Currency, EstimateStatus, RateBasis, Vessel, VoyageEstimate, VoyageEstimateCreate } from '../api/types'
+import VoyageEstimateResults from '../components/VoyageEstimateResults'
+import type {
+  EstimateCargoLot,
+  EstimatePortStop,
+  EstimateResults,
+  EstimateStatus,
+  LaytimeBasis,
+  LaytimeUnit,
+  Port,
+  Vessel,
+  VoyageEstimate,
+  VoyageEstimateCreate,
+} from '../api/types'
 
-const EMPTY_FORM: VoyageEstimateCreate = {
+const MAX_PORT_STOPS = 10
+const MAX_CARGO_LOTS = 3
+
+const LAYTIME_UNITS: { value: LaytimeUnit; key: string }[] = [
+  { value: 'hours', key: 'voyageEstimates.unitHours' },
+  { value: 'days', key: 'voyageEstimates.unitDays' },
+  { value: 'mt_per_hour', key: 'voyageEstimates.unitMtPerHour' },
+  { value: 'mt_per_day', key: 'voyageEstimates.unitMtPerDay' },
+]
+const LAYTIME_BASES: LaytimeBasis[] = ['CQD', 'WIBON', 'WIPON', 'FIO', 'SHINC', 'SHEX']
+
+const newStop = (): EstimatePortStop => ({
+  port_name: '',
+  stop_type: 'load',
+  distance_nm: 0,
+  cargo_quantity_mt: 0,
+  laytime_value: 0,
+  laytime_unit: 'days',
+  laytime_basis: 'SHINC',
+  rate_mt_per_day: 0,
+})
+const newLot = (): EstimateCargoLot => ({ grade: '', quantity_mt: 0, freight_rate: 0 })
+
+const emptyForm = (): VoyageEstimateCreate => ({
+  name: '',
   vessel_id: null,
-  load_port: '',
-  discharge_port: '',
+  currency: 'USD',
   laycan_start: '',
   laycan_end: '',
-  cargo_grade: '',
-  estimated_cargo_quantity_mt: 0,
-  estimated_rate: 0,
-  estimated_rate_basis: '' as RateBasis,
-  currency: '' as Currency,
-  estimated_bunker_consumption_mt: 0,
-  estimated_bunker_cost: 0,
-  estimated_port_costs: 0,
-  estimated_duration_days: 0,
-}
+  freight_mode: 'per_mt',
+  lumpsum_freight: 0,
+  sea_mode: 'laden',
+  extra_sea_days: 0,
+  extra_costs: 0,
+  canal_fees: 0,
+  port_charges: 0,
+  agent_fees: 0,
+  bunker_surcharge: 0,
+  demurrage_rate: 0,
+  port_stops: [newStop()],
+  cargo_lots: [newLot()],
+  fuel_prices: [],
+  cost_items: [],
+})
 
 const STATUS_KEYS: Record<EstimateStatus, string> = {
   draft: 'voyageEstimates.statusDraft',
@@ -42,70 +85,182 @@ const STATUS_TONES: Record<EstimateStatus, BadgeTone> = {
   declined: 'danger',
 }
 
+const toCreate = (est: VoyageEstimate): VoyageEstimateCreate => ({
+  name: est.name,
+  vessel_id: est.vessel_id,
+  currency: est.currency,
+  laycan_start: est.laycan_start ?? '',
+  laycan_end: est.laycan_end ?? '',
+  freight_mode: est.freight_mode,
+  lumpsum_freight: est.lumpsum_freight,
+  sea_mode: est.sea_mode,
+  extra_sea_days: est.extra_sea_days,
+  extra_costs: est.extra_costs,
+  canal_fees: est.canal_fees,
+  port_charges: est.port_charges,
+  agent_fees: est.agent_fees,
+  bunker_surcharge: est.bunker_surcharge,
+  demurrage_rate: est.demurrage_rate,
+  port_stops: est.port_stops.map((s) => ({ ...s })),
+  cargo_lots: est.cargo_lots.map((l) => ({ ...l })),
+  fuel_prices: est.fuel_prices.map((p) => ({ ...p })),
+  cost_items: est.cost_items.map((i) => ({ ...i })),
+})
+
+const vesselGrades = (vessel: Vessel | undefined): string[] => {
+  if (!vessel) return []
+  const grades = new Set<string>()
+  vessel.sea_consumption.forEach((r) => grades.add(r.grade))
+  vessel.port_consumption.forEach((r) => grades.add(r.grade))
+  return [...grades]
+}
+
+const money = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })
+
 export default function VoyageEstimatesPage() {
   const { t } = useTranslation()
   const [estimates, setEstimates] = useState<VoyageEstimate[]>([])
   const [vessels, setVessels] = useState<Vessel[]>([])
+  const [ports, setPorts] = useState<Port[]>([])
   const [loading, setLoading] = useState(true)
-  const [form, setForm] = useState<VoyageEstimateCreate>(EMPTY_FORM)
+  const [form, setForm] = useState<VoyageEstimateCreate>(emptyForm)
+  const [results, setResults] = useState<EstimateResults | null>(null)
   const [promotingId, setPromotingId] = useState<number | null>(null)
   const [charterer, setCharterer] = useState('')
+  const [promoteGrade, setPromoteGrade] = useState('')
+  const [newGrade, setNewGrade] = useState('')
+  const [newPort, setNewPort] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
 
   const refresh = () => listVoyageEstimates().then(setEstimates)
+  const refreshPorts = () => listPorts().then(setPorts)
 
   useEffect(() => {
-    Promise.all([refresh(), listVessels().then(setVessels)]).finally(() => setLoading(false))
+    Promise.all([refresh(), listVessels().then(setVessels), refreshPorts()]).finally(() => setLoading(false))
   }, [])
 
+  const vessel = vessels.find((v) => v.id === form.vessel_id)
   const vesselName = (id: number | null) => (id == null ? '' : (vessels.find((v) => v.id === id)?.name ?? `#${id}`))
 
-  const field =
-    (key: keyof VoyageEstimateCreate, numeric = false) =>
-    (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
-      setForm((f) => ({ ...f, [key]: numeric ? Number(e.target.value) : e.target.value }))
+  // Prices are listed for every grade the vessel burns plus any grade added by hand.
+  const priceGrades = useMemo(() => {
+    const grades = new Set(vesselGrades(vessel))
+    form.fuel_prices.forEach((p) => grades.add(p.grade))
+    return [...grades]
+  }, [vessel, form.fuel_prices])
+
+  const set = <K extends keyof VoyageEstimateCreate>(key: K, value: VoyageEstimateCreate[K]) => {
+    setForm((f) => ({ ...f, [key]: value }))
+    setResults(null)
+  }
+  const numField = (key: keyof VoyageEstimateCreate) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    set(key, Number(e.target.value) as never)
+  const textField = (key: keyof VoyageEstimateCreate) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
+    set(key, e.target.value as never)
+
+  const updateStop = (i: number, patch: Partial<EstimatePortStop>) =>
+    set('port_stops', form.port_stops.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+  const updateLot = (i: number, patch: Partial<EstimateCargoLot>) =>
+    set('cargo_lots', form.cargo_lots.map((l, j) => (j === i ? { ...l, ...patch } : l)))
+  const setPrice = (grade: string, value: string) => {
+    const others = form.fuel_prices.filter((p) => p.grade !== grade)
+    set('fuel_prices', value === '' ? others : [...others, { grade, price_per_mt: Number(value) }])
+  }
+
+  const handleCurrencyChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
+    const hasMoney =
+      form.lumpsum_freight || form.canal_fees || form.port_charges || form.agent_fees || form.bunker_surcharge ||
+      form.extra_costs || form.demurrage_rate || form.fuel_prices.length || form.cost_items.length ||
+      form.cargo_lots.some((l) => l.freight_rate)
+    if (hasMoney && !window.confirm(t('voyageEstimates.currencySwitchConfirm'))) return
+    setForm((f) => ({
+      ...f,
+      currency: e.target.value as VoyageEstimateCreate['currency'],
+      lumpsum_freight: 0,
+      canal_fees: 0,
+      port_charges: 0,
+      agent_fees: 0,
+      bunker_surcharge: 0,
+      extra_costs: 0,
+      demurrage_rate: 0,
+      fuel_prices: [],
+      cost_items: [],
+      cargo_lots: f.cargo_lots.map((l) => ({ ...l, freight_rate: 0 })),
+    }))
+    setResults(null)
+  }
+
+  const payloadFromForm = (): VoyageEstimateCreate => ({
+    ...form,
+    laycan_start: form.laycan_start || null,
+    laycan_end: form.laycan_end || null,
+    cargo_lots:
+      form.freight_mode === 'per_mt' ? form.cargo_lots.filter((l) => l.quantity_mt > 0 || l.freight_rate > 0) : [],
+    cost_items: form.cost_items.filter((i) => i.description.trim() || i.amount > 0),
+  })
 
   const handleEdit = (est: VoyageEstimate) => {
     setError(null)
     setEditingId(est.id)
-    setForm({
-      vessel_id: est.vessel_id,
-      load_port: est.load_port,
-      discharge_port: est.discharge_port,
-      laycan_start: est.laycan_start,
-      laycan_end: est.laycan_end,
-      cargo_grade: est.cargo_grade,
-      estimated_cargo_quantity_mt: est.estimated_cargo_quantity_mt,
-      estimated_rate: est.estimated_rate,
-      estimated_rate_basis: est.estimated_rate_basis,
-      currency: est.currency,
-      estimated_bunker_consumption_mt: est.estimated_bunker_consumption_mt,
-      estimated_bunker_cost: est.estimated_bunker_cost,
-      estimated_port_costs: est.estimated_port_costs,
-      estimated_duration_days: est.estimated_duration_days,
-    })
+    const created = toCreate(est)
+    setForm({ ...created, cargo_lots: created.cargo_lots.length ? created.cargo_lots : [newLot()] })
+    setResults(est.results)
+    window.scrollTo?.({ top: document.body.scrollHeight, behavior: 'smooth' })
   }
 
-  const handleCancelEdit = () => {
+  const handleReset = () => {
     setEditingId(null)
-    setForm(EMPTY_FORM)
+    setForm(emptyForm())
+    setResults(null)
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
+  const fail = (err: unknown, fallback: string) => setError(err instanceof Error ? err.message : fallback)
+
+  const handleCalculate = async () => {
+    setError(null)
+    try {
+      setResults(await calculateVoyageEstimate(payloadFromForm()))
+    } catch (err) {
+      fail(err, 'Failed to calculate')
+    }
+  }
+
+  const handleSave = async (e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
     try {
-      const payload = { ...form, vessel_id: form.vessel_id || null }
-      if (editingId !== null) {
-        await updateVoyageEstimate(editingId, payload)
-      } else {
-        await createVoyageEstimate(payload)
-      }
-      handleCancelEdit()
+      const saved =
+        editingId !== null
+          ? await updateVoyageEstimate(editingId, payloadFromForm())
+          : await createVoyageEstimate(payloadFromForm())
+      setEditingId(saved.id)
+      setResults(saved.results)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to create estimate')
+      fail(err, 'Failed to save estimate')
+    }
+  }
+
+  const handleDuplicate = async (est: VoyageEstimate) => {
+    setError(null)
+    try {
+      await createVoyageEstimate({ ...toCreate(est), name: `${est.name} ${t('voyageEstimates.copySuffix')}` })
+      await refresh()
+    } catch (err) {
+      fail(err, 'Failed to duplicate estimate')
+    }
+  }
+
+  const handleDelete = async (est: VoyageEstimate) => {
+    if (!window.confirm(t('voyageEstimates.deleteConfirm', { name: est.name }))) return
+    setError(null)
+    try {
+      await deleteVoyageEstimate(est.id)
+      if (editingId === est.id) handleReset()
+      await refresh()
+    } catch (err) {
+      fail(err, 'Failed to delete estimate')
     }
   }
 
@@ -115,36 +270,74 @@ export default function VoyageEstimatesPage() {
       await updateVoyageEstimateStatus(estimate.id, status)
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to update status')
+      fail(err, 'Failed to update status')
     }
+  }
+
+  const startPromotion = (est: VoyageEstimate) => {
+    setPromotingId(promotingId === est.id ? null : est.id)
+    setPromoteGrade(est.cargo_lots[0]?.grade ?? '')
   }
 
   const handlePromote = async (estimate: VoyageEstimate, e: React.FormEvent) => {
     e.preventDefault()
     setError(null)
+    const perMt = estimate.freight_mode === 'per_mt'
     try {
       await promoteVoyageEstimate(estimate.id, {
         fixture_type: 'voyage_charter',
         charterer,
         contract_currency: estimate.currency,
-        freight_rate: estimate.estimated_rate,
-        freight_rate_basis: estimate.estimated_rate_basis,
-        laycan_start: estimate.laycan_start,
-        laycan_end: estimate.laycan_end,
-        load_port: estimate.load_port,
-        discharge_port: estimate.discharge_port,
-        cargo_grade: estimate.cargo_grade,
+        freight_rate: perMt ? (estimate.cargo_lots[0]?.freight_rate ?? 0) : estimate.lumpsum_freight,
+        freight_rate_basis: perMt ? 'per_tonne' : 'lump_sum',
+        laycan_start: estimate.laycan_start ?? undefined,
+        laycan_end: estimate.laycan_end ?? undefined,
+        load_port: estimate.port_stops.find((s) => s.stop_type === 'load')?.port_name,
+        discharge_port: estimate.port_stops.find((s) => s.stop_type === 'discharge')?.port_name,
+        cargo_grade: promoteGrade,
+        vat_applicable: false,
         brokers: [],
       })
       setPromotingId(null)
       setCharterer('')
       await refresh()
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'Failed to promote estimate')
+      fail(err, 'Failed to promote estimate')
     }
   }
 
+  const handlePrint = () => {
+    document.body.classList.add('printing-estimate')
+    window.print()
+    document.body.classList.remove('printing-estimate')
+  }
+
+  const handleAddPort = async () => {
+    const name = newPort.trim()
+    if (!name) return
+    setError(null)
+    try {
+      await createPort(name)
+      setNewPort('')
+      await refreshPorts()
+    } catch (err) {
+      fail(err, 'Failed to add port')
+    }
+  }
+
+  const handleRemovePort = async (port: Port) => {
+    setError(null)
+    try {
+      await deletePort(port.id)
+      await refreshPorts()
+    } catch (err) {
+      fail(err, 'Failed to remove port')
+    }
+  }
+
+  const route = (est: VoyageEstimate) => est.port_stops.map((s) => s.port_name).join(' → ')
   const canProgress = (status: EstimateStatus) => status === 'draft' || status === 'under_negotiation'
+  const locked = editingId !== null && estimates.find((e) => e.id === editingId)?.status === 'fixed'
 
   return (
     <div>
@@ -154,207 +347,550 @@ export default function VoyageEstimatesPage() {
         <p>{t('common.loading')}</p>
       ) : (
         <div className="table-scroll">
-        <table>
-          <thead>
-            <tr>
-              <th>{t('voyageEstimates.vessel')}</th>
-              <th>{t('voyageEstimates.loadPort')}</th>
-              <th>{t('voyageEstimates.dischargePort')}</th>
-              <th>{t('voyageEstimates.columnCargo')}</th>
-              <th>{t('voyageEstimates.columnRevenue')}</th>
-              <th>{t('voyageEstimates.columnCosts')}</th>
-              <th>{t('voyageEstimates.columnNetResult')}</th>
-              <th>{t('voyageEstimates.columnTce')}</th>
-              <th>{t('voyageEstimates.columnStatus')}</th>
-              <th></th>
-            </tr>
-          </thead>
-          <tbody>
-            {estimates.map((est) => (
-              <tr key={est.id}>
-                <td>{vesselName(est.vessel_id)}</td>
-                <td>{est.load_port}</td>
-                <td>{est.discharge_port}</td>
-                <td>
-                  {est.cargo_grade} ({est.estimated_cargo_quantity_mt})
-                  {est.warnings.map((w, i) => (
-                    <p key={i} role="alert">
-                      {w}
-                    </p>
-                  ))}
-                </td>
-                <td>{est.estimated_revenue}</td>
-                <td>{est.estimated_costs}</td>
-                <td>{est.estimated_net_result}</td>
-                <td>{est.estimated_tce_per_day}</td>
-                <td>
-                  <Badge tone={STATUS_TONES[est.status]}>{t(STATUS_KEYS[est.status])}</Badge>
-                </td>
-                <td>
-                  <button type="button" onClick={() => handleEdit(est)}>
-                    {t('common.edit')}
-                  </button>
-                  {canProgress(est.status) && (
-                    <>
-                      {est.status === 'draft' && (
-                        <button type="button" onClick={() => handleStatusChange(est, 'under_negotiation')}>
-                          {t('voyageEstimates.negotiateButton')}
-                        </button>
-                      )}
-                      <button type="button" onClick={() => handleStatusChange(est, 'declined')}>
-                        {t('voyageEstimates.declineButton')}
-                      </button>
-                      <button type="button" onClick={() => setPromotingId(promotingId === est.id ? null : est.id)}>
-                        {t('voyageEstimates.promoteButton')}
-                      </button>
-                      {promotingId === est.id && (
-                        <form onSubmit={(e) => handlePromote(est, e)}>
-                          <h3>{t('voyageEstimates.promoteHeading')}</h3>
-                          <label>
-                            {t('voyageEstimates.charterer')}
-                            <input value={charterer} onChange={(e) => setCharterer(e.target.value)} required />
-                          </label>
-                          <button type="submit">{t('voyageEstimates.confirmPromoteButton')}</button>
-                        </form>
-                      )}
-                    </>
-                  )}
-                </td>
+          <table>
+            <thead>
+              <tr>
+                <th>{t('voyageEstimates.name')}</th>
+                <th>{t('voyageEstimates.vessel')}</th>
+                <th>{t('voyageEstimates.columnRoute')}</th>
+                <th>{t('voyageEstimates.columnDays')}</th>
+                <th>{t('voyageEstimates.columnRevenue')}</th>
+                <th>{t('voyageEstimates.columnCosts')}</th>
+                <th>{t('voyageEstimates.columnNetResult')}</th>
+                <th>{t('voyageEstimates.columnTce')}</th>
+                <th>{t('voyageEstimates.columnStatus')}</th>
+                <th></th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {estimates.map((est) => (
+                <tr key={est.id}>
+                  <td>
+                    {est.name}
+                    {est.warnings.map((w, i) => (
+                      <p key={i} role="alert">
+                        {w}
+                      </p>
+                    ))}
+                  </td>
+                  <td>{vesselName(est.vessel_id)}</td>
+                  <td>{route(est)}</td>
+                  <td>{est.results.total_voyage_days}</td>
+                  <td>
+                    {money(est.results.freight_revenue)} {est.currency}
+                  </td>
+                  <td>
+                    {money(est.results.total_costs)} {est.currency}
+                  </td>
+                  <td>
+                    {money(est.results.net_result)} {est.currency}
+                  </td>
+                  <td>
+                    {money(est.results.tce_per_day)} {est.currency}
+                  </td>
+                  <td>
+                    <Badge tone={STATUS_TONES[est.status]}>{t(STATUS_KEYS[est.status])}</Badge>
+                  </td>
+                  <td>
+                    <button type="button" onClick={() => handleEdit(est)}>
+                      {est.status === 'fixed' ? t('common.view') : t('common.edit')}
+                    </button>
+                    <button type="button" onClick={() => handleDuplicate(est)}>
+                      {t('voyageEstimates.duplicateButton')}
+                    </button>
+                    {est.status !== 'fixed' && (
+                      <button type="button" onClick={() => handleDelete(est)}>
+                        {t('common.delete')}
+                      </button>
+                    )}
+                    {canProgress(est.status) && (
+                      <>
+                        {est.status === 'draft' && (
+                          <button type="button" onClick={() => handleStatusChange(est, 'under_negotiation')}>
+                            {t('voyageEstimates.negotiateButton')}
+                          </button>
+                        )}
+                        <button type="button" onClick={() => handleStatusChange(est, 'declined')}>
+                          {t('voyageEstimates.declineButton')}
+                        </button>
+                        <button type="button" onClick={() => startPromotion(est)}>
+                          {t('voyageEstimates.promoteButton')}
+                        </button>
+                        {promotingId === est.id && (
+                          <form onSubmit={(e) => handlePromote(est, e)}>
+                            <h3>{t('voyageEstimates.promoteHeading')}</h3>
+                            <label>
+                              {t('voyageEstimates.charterer')}
+                              <input value={charterer} onChange={(e) => setCharterer(e.target.value)} required />
+                            </label>
+                            <label>
+                              {t('voyageEstimates.cargoGrade')}
+                              <input value={promoteGrade} onChange={(e) => setPromoteGrade(e.target.value)} required />
+                            </label>
+                            <button type="submit">{t('voyageEstimates.confirmPromoteButton')}</button>
+                          </form>
+                        )}
+                      </>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       )}
 
       <h2>{editingId !== null ? t('voyageEstimates.editHeading') : t('voyageEstimates.createHeading')}</h2>
-      {editingId !== null && <p role="alert">{t('voyageEstimates.editWarning')}</p>}
-      <form onSubmit={handleSubmit}>
-        <label>
-          {t('voyageEstimates.vessel')}
-          <select value={form.vessel_id ?? ''} onChange={field('vessel_id', true)}>
-            <option value="">{t('voyageEstimates.selectVessel')}</option>
-            {vessels.map((v) => (
-              <option key={v.id} value={v.id}>
-                {v.name}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label>
-          {t('voyageEstimates.loadPort')}
-          <input value={form.load_port} onChange={field('load_port')} required />
-        </label>
-        <label>
-          {t('voyageEstimates.dischargePort')}
-          <input value={form.discharge_port} onChange={field('discharge_port')} required />
-        </label>
-        <label>
-          {t('voyageEstimates.laycanStart')}
-          <input value={form.laycan_start} onChange={field('laycan_start')} placeholder="YYYY-MM-DD" required />
-        </label>
-        <label>
-          {t('voyageEstimates.laycanEnd')}
-          <input value={form.laycan_end} onChange={field('laycan_end')} placeholder="YYYY-MM-DD" required />
-        </label>
-        <label>
-          {t('voyageEstimates.cargoGrade')}
-          <input value={form.cargo_grade} onChange={field('cargo_grade')} required />
-        </label>
-        <label>
-          {t('voyageEstimates.cargoQuantity')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_cargo_quantity_mt || ''}
-            onChange={field('estimated_cargo_quantity_mt', true)}
-            required
-          />
-        </label>
-        <label>
-          {t('voyageEstimates.rate')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_rate || ''}
-            onChange={field('estimated_rate', true)}
-            required
-          />
-        </label>
-        <label>
-          {t('voyageEstimates.rateBasis')}
-          <select value={form.estimated_rate_basis} onChange={field('estimated_rate_basis')} required>
-            <option value="" disabled>
-              {t('voyageEstimates.selectRateBasis')}
-            </option>
-            <option value="per_tonne">{t('voyageEstimates.perTonne')}</option>
-            <option value="lump_sum">{t('voyageEstimates.lumpSum')}</option>
-          </select>
-        </label>
-        <label>
-          {t('voyageEstimates.currency')}
-          <select value={form.currency} onChange={field('currency')} required>
-            <option value="" disabled>
-              {t('voyageEstimates.selectCurrency')}
-            </option>
-            <option value="RUB">RUB</option>
-            <option value="USD">USD</option>
-          </select>
-        </label>
-        <label>
-          {t('voyageEstimates.bunkerConsumption')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_bunker_consumption_mt || ''}
-            onChange={field('estimated_bunker_consumption_mt', true)}
-            required
-          />
-        </label>
-        <label>
-          {t('voyageEstimates.bunkerCost')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_bunker_cost || ''}
-            onChange={field('estimated_bunker_cost', true)}
-            required
-          />
-        </label>
-        <label>
-          {t('voyageEstimates.portCosts')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_port_costs || ''}
-            onChange={field('estimated_port_costs', true)}
-            required
-          />
-        </label>
-        <label>
-          {t('voyageEstimates.duration')}
-          <input
-            type="number"
-            step="0.01"
-            value={form.estimated_duration_days || ''}
-            onChange={field('estimated_duration_days', true)}
-            required
-          />
-        </label>
-        <button type="submit">
-          {editingId !== null ? t('voyageEstimates.updateButton') : t('voyageEstimates.createButton')}
-        </button>
-        {editingId !== null && (
-          <button type="button" onClick={handleCancelEdit}>
-            {t('common.cancel')}
+      {editingId !== null && !locked && <p role="alert">{t('voyageEstimates.editWarning')}</p>}
+      {locked && <p role="alert">{t('voyageEstimates.fixedLocked')}</p>}
+
+      <datalist id="port-suggestions">
+        {ports.map((p) => (
+          <option key={p.id} value={p.name} />
+        ))}
+      </datalist>
+
+      <form className="estimate-form" onSubmit={handleSave}>
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionVoyage')}</legend>
+          <div className="field-grid">
+            <label>
+              {t('voyageEstimates.name')}
+              <input value={form.name} onChange={textField('name')} required />
+            </label>
+            <label>
+              {t('voyageEstimates.vessel')}
+              <select
+                value={form.vessel_id ?? ''}
+                onChange={(e) => set('vessel_id', e.target.value ? Number(e.target.value) : null)}
+              >
+                <option value="">{t('voyageEstimates.selectVessel')}</option>
+                {vessels.map((v) => (
+                  <option key={v.id} value={v.id}>
+                    {v.name}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <label>
+              {t('voyageEstimates.currency')}
+              <select value={form.currency} onChange={handleCurrencyChange}>
+                <option value="USD">USD</option>
+                <option value="RUB">RUB</option>
+              </select>
+            </label>
+            <label>
+              {t('voyageEstimates.laycanStart')}
+              <input value={form.laycan_start ?? ''} onChange={textField('laycan_start')} placeholder="YYYY-MM-DD" />
+            </label>
+            <label>
+              {t('voyageEstimates.laycanEnd')}
+              <input value={form.laycan_end ?? ''} onChange={textField('laycan_end')} placeholder="YYYY-MM-DD" />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionItinerary')}</legend>
+          <p className="hint">{t('voyageEstimates.itineraryHint')}</p>
+          <div className="table-scroll">
+            <table>
+              <thead>
+                <tr>
+                  <th>#</th>
+                  <th>{t('voyageEstimates.port')}</th>
+                  <th>{t('voyageEstimates.stopType')}</th>
+                  <th>{t('voyageEstimates.distance')}</th>
+                  <th>{t('voyageEstimates.stopCargo')}</th>
+                  <th>{t('voyageEstimates.laytime')}</th>
+                  <th>{t('voyageEstimates.laytimeUnit')}</th>
+                  <th>{t('voyageEstimates.laytimeBasis')}</th>
+                  <th>{t('voyageEstimates.workRate')}</th>
+                  <th></th>
+                </tr>
+              </thead>
+              <tbody>
+                {form.port_stops.map((s, i) => (
+                  <tr key={i}>
+                    <td>{i + 1}</td>
+                    <td>
+                      <input
+                        list="port-suggestions"
+                        aria-label={`${t('voyageEstimates.port')} ${i + 1}`}
+                        value={s.port_name}
+                        onChange={(e) => updateStop(i, { port_name: e.target.value })}
+                        required
+                      />
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`${t('voyageEstimates.stopType')} ${i + 1}`}
+                        value={s.stop_type}
+                        onChange={(e) => updateStop(i, { stop_type: e.target.value as EstimatePortStop['stop_type'] })}
+                      >
+                        <option value="load">{t('voyageEstimates.typeLoad')}</option>
+                        <option value="discharge">{t('voyageEstimates.typeDischarge')}</option>
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        aria-label={`${t('voyageEstimates.distance')} ${i + 1}`}
+                        disabled={i === 0}
+                        value={i === 0 ? 0 : s.distance_nm || ''}
+                        placeholder="0"
+                        onChange={(e) => updateStop(i, { distance_nm: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        aria-label={`${t('voyageEstimates.stopCargo')} ${i + 1}`}
+                        value={s.cargo_quantity_mt || ''} placeholder="0"
+                        onChange={(e) => updateStop(i, { cargo_quantity_mt: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        aria-label={`${t('voyageEstimates.laytime')} ${i + 1}`}
+                        value={s.laytime_value || ''} placeholder="0"
+                        onChange={(e) => updateStop(i, { laytime_value: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`${t('voyageEstimates.laytimeUnit')} ${i + 1}`}
+                        value={s.laytime_unit}
+                        onChange={(e) => updateStop(i, { laytime_unit: e.target.value as LaytimeUnit })}
+                      >
+                        {LAYTIME_UNITS.map((u) => (
+                          <option key={u.value} value={u.value}>
+                            {t(u.key)}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`${t('voyageEstimates.laytimeBasis')} ${i + 1}`}
+                        value={s.laytime_basis}
+                        onChange={(e) => updateStop(i, { laytime_basis: e.target.value as LaytimeBasis })}
+                      >
+                        {LAYTIME_BASES.map((b) => (
+                          <option key={b} value={b}>
+                            {b}
+                          </option>
+                        ))}
+                      </select>
+                    </td>
+                    <td>
+                      <input
+                        type="number"
+                        step="any"
+                        min="0"
+                        aria-label={`${t('voyageEstimates.workRate')} ${i + 1}`}
+                        value={s.rate_mt_per_day || ''} placeholder="0"
+                        onChange={(e) => updateStop(i, { rate_mt_per_day: Number(e.target.value) })}
+                      />
+                    </td>
+                    <td>
+                      <button
+                        type="button"
+                        aria-label={`${t('common.delete')} ${t('voyageEstimates.port')} ${i + 1}`}
+                        disabled={form.port_stops.length === 1}
+                        onClick={() => set('port_stops', form.port_stops.filter((_, j) => j !== i))}
+                      >
+                        ×
+                      </button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+          <button
+            type="button"
+            disabled={form.port_stops.length >= MAX_PORT_STOPS}
+            onClick={() => set('port_stops', [...form.port_stops, newStop()])}
+          >
+            {t('voyageEstimates.addPort')}
           </button>
-        )}
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionSeaPassage')}</legend>
+          <div className="field-grid">
+            <label>
+              {t('voyageEstimates.seaMode')}
+              <select value={form.sea_mode} onChange={textField('sea_mode')}>
+                <option value="laden">{t('vessels.modeLaden')}</option>
+                <option value="ballast">{t('vessels.modeBallast')}</option>
+                <option value="eco">{t('vessels.modeEco')}</option>
+              </select>
+            </label>
+            <label>
+              {t('voyageEstimates.extraSeaDays')}
+              <input type="number" step="any" min="0" value={form.extra_sea_days || ''} placeholder="0" onChange={numField('extra_sea_days')} />
+            </label>
+            <label>
+              {t('voyageEstimates.extraCosts')} ({form.currency})
+              <input type="number" step="any" min="0" value={form.extra_costs || ''} placeholder="0" onChange={numField('extra_costs')} />
+            </label>
+          </div>
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionCargoFreight')}</legend>
+          <div className="inline-row">
+            <label>
+              <input
+                type="radio"
+                name="freight_mode"
+                checked={form.freight_mode === 'per_mt'}
+                onChange={() => set('freight_mode', 'per_mt')}
+              />{' '}
+              {t('voyageEstimates.perMt')}
+            </label>
+            <label>
+              <input
+                type="radio"
+                name="freight_mode"
+                checked={form.freight_mode === 'lumpsum'}
+                onChange={() => set('freight_mode', 'lumpsum')}
+              />{' '}
+              {t('voyageEstimates.lumpSum')}
+            </label>
+          </div>
+          {form.freight_mode === 'lumpsum' ? (
+            <div className="field-grid">
+              <label>
+                {t('voyageEstimates.lumpsumFreight')} ({form.currency})
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  value={form.lumpsum_freight || ''} placeholder="0"
+                  onChange={numField('lumpsum_freight')}
+                />
+              </label>
+            </div>
+          ) : (
+            <>
+              {form.cargo_lots.map((l, i) => (
+                <div className="inline-row" key={i}>
+                  <input
+                    aria-label={`${t('voyageEstimates.cargoGrade')} ${i + 1}`}
+                    placeholder={t('voyageEstimates.cargoGrade')}
+                    value={l.grade}
+                    onChange={(e) => updateLot(i, { grade: e.target.value })}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    aria-label={`${t('voyageEstimates.lotQuantity')} ${i + 1}`}
+                    placeholder={t('voyageEstimates.lotQuantity')}
+                    value={l.quantity_mt || ''}
+                    onChange={(e) => updateLot(i, { quantity_mt: Number(e.target.value) })}
+                  />
+                  <input
+                    type="number"
+                    step="any"
+                    min="0"
+                    aria-label={`${t('voyageEstimates.lotRate')} ${i + 1}`}
+                    placeholder={`${t('voyageEstimates.lotRate')} (${form.currency}/MT)`}
+                    value={l.freight_rate || ''}
+                    onChange={(e) => updateLot(i, { freight_rate: Number(e.target.value) })}
+                  />
+                  <button
+                    type="button"
+                    aria-label={`${t('common.delete')} ${t('voyageEstimates.cargoGrade')} ${i + 1}`}
+                    disabled={form.cargo_lots.length === 1}
+                    onClick={() => set('cargo_lots', form.cargo_lots.filter((_, j) => j !== i))}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <button
+                type="button"
+                disabled={form.cargo_lots.length >= MAX_CARGO_LOTS}
+                onClick={() => set('cargo_lots', [...form.cargo_lots, newLot()])}
+              >
+                {t('voyageEstimates.addCargoLot')}
+              </button>
+            </>
+          )}
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionFuelPrices')}</legend>
+          <p className="hint">{t('voyageEstimates.fuelPricesHint')}</p>
+          <div className="field-grid">
+            {priceGrades.map((grade) => (
+              <label key={grade}>
+                {grade} ({form.currency}/MT)
+                <input
+                  type="number"
+                  step="any"
+                  min="0"
+                  aria-label={`${t('voyageEstimates.fuelPrice')} ${grade}`}
+                  value={form.fuel_prices.find((p) => p.grade === grade)?.price_per_mt ?? ''}
+                  onChange={(e) => setPrice(grade, e.target.value)}
+                />
+              </label>
+            ))}
+          </div>
+          <div className="inline-row">
+            <input
+              aria-label={t('voyageEstimates.newFuelGrade')}
+              placeholder={t('voyageEstimates.newFuelGrade')}
+              value={newGrade}
+              onChange={(e) => setNewGrade(e.target.value)}
+            />
+            <button
+              type="button"
+              onClick={() => {
+                const grade = newGrade.trim()
+                if (!grade || priceGrades.includes(grade)) return
+                set('fuel_prices', [...form.fuel_prices, { grade, price_per_mt: 0 }])
+                setNewGrade('')
+              }}
+            >
+              {t('voyageEstimates.addFuelGrade')}
+            </button>
+          </div>
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionCosts')}</legend>
+          <div className="field-grid">
+            <label>
+              {t('voyageEstimates.canalFees')} ({form.currency})
+              <input type="number" step="any" min="0" value={form.canal_fees || ''} placeholder="0" onChange={numField('canal_fees')} />
+            </label>
+            <label>
+              {t('voyageEstimates.portCharges')} ({form.currency})
+              <input type="number" step="any" min="0" value={form.port_charges || ''} placeholder="0" onChange={numField('port_charges')} />
+            </label>
+            <label>
+              {t('voyageEstimates.agentFees')} ({form.currency})
+              <input type="number" step="any" min="0" value={form.agent_fees || ''} placeholder="0" onChange={numField('agent_fees')} />
+            </label>
+            <label>
+              {t('voyageEstimates.bunkerSurcharge')} ({form.currency})
+              <input
+                type="number"
+                step="any"
+                min="0"
+                value={form.bunker_surcharge || ''} placeholder="0"
+                onChange={numField('bunker_surcharge')}
+              />
+            </label>
+          </div>
+          {form.cost_items.map((item, i) => (
+            <div className="inline-row" key={i}>
+              <input
+                aria-label={`${t('voyageEstimates.costDescription')} ${i + 1}`}
+                placeholder={t('voyageEstimates.costDescription')}
+                value={item.description}
+                onChange={(e) =>
+                  set('cost_items', form.cost_items.map((c, j) => (j === i ? { ...c, description: e.target.value } : c)))
+                }
+              />
+              <input
+                type="number"
+                step="any"
+                min="0"
+                aria-label={`${t('voyageEstimates.costAmount')} ${i + 1}`}
+                placeholder={t('voyageEstimates.costAmount')}
+                value={item.amount || ''}
+                onChange={(e) =>
+                  set('cost_items', form.cost_items.map((c, j) => (j === i ? { ...c, amount: Number(e.target.value) } : c)))
+                }
+              />
+              <button
+                type="button"
+                aria-label={`${t('common.delete')} ${t('voyageEstimates.costDescription')} ${i + 1}`}
+                onClick={() => set('cost_items', form.cost_items.filter((_, j) => j !== i))}
+              >
+                ×
+              </button>
+            </div>
+          ))}
+          <button type="button" onClick={() => set('cost_items', [...form.cost_items, { description: '', amount: 0 }])}>
+            {t('voyageEstimates.addCostItem')}
+          </button>
+        </fieldset>
+
+        <fieldset disabled={locked}>
+          <legend>{t('voyageEstimates.sectionDemurrage')}</legend>
+          <div className="field-grid">
+            <label>
+              {t('voyageEstimates.demurrageRate')} ({form.currency})
+              <input type="number" step="any" min="0" value={form.demurrage_rate || ''} placeholder="0" onChange={numField('demurrage_rate')} />
+            </label>
+          </div>
+        </fieldset>
+
+        <div className="estimate-actions no-print">
+          <button type="button" onClick={handleCalculate}>
+            {t('voyageEstimates.calculateButton')}
+          </button>
+          {!locked && (
+            <button type="submit">
+              {editingId !== null ? t('voyageEstimates.updateButton') : t('voyageEstimates.createButton')}
+            </button>
+          )}
+          <button type="button" onClick={handleReset}>
+            {editingId !== null ? t('common.cancel') : t('voyageEstimates.resetButton')}
+          </button>
+          {results && (
+            <button type="button" onClick={handlePrint}>
+              {t('voyageEstimates.printButton')}
+            </button>
+          )}
+        </div>
       </form>
+
       {error && (
         <p role="alert" className="alert-danger">
           {error}
         </p>
       )}
+
+      {results && <VoyageEstimateResults results={results} form={form} vesselName={vessel?.name ?? ''} />}
+
+      <h2>{t('voyageEstimates.portListHeading')}</h2>
+      <p className="hint">{t('voyageEstimates.portListHint')}</p>
+      <div className="inline-row">
+        <input
+          aria-label={t('voyageEstimates.newPort')}
+          placeholder={t('voyageEstimates.newPort')}
+          value={newPort}
+          onChange={(e) => setNewPort(e.target.value)}
+        />
+        <button type="button" onClick={handleAddPort}>
+          {t('voyageEstimates.addPortToList')}
+        </button>
+      </div>
+      <div className="inline-row">
+        {ports.map((p) => (
+          <Badge key={p.id} tone="neutral">
+            {p.name}{' '}
+            <button type="button" aria-label={`${t('common.delete')} ${p.name}`} onClick={() => handleRemovePort(p)}>
+              ×
+            </button>
+          </Badge>
+        ))}
+      </div>
     </div>
   )
 }

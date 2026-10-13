@@ -211,7 +211,7 @@ export default function FixturesPage() {
         </label>
         <label>
           {t('fixtures.charterPartyRef')}
-          <input value={form.charter_party_ref ?? ''} onChange={field('charter_party_ref')} maxLength={15} />
+          <input value={form.charter_party_ref ?? ''} onChange={field('charter_party_ref')} maxLength={100} />
         </label>
         <label>
           {t('fixtures.charterPartyType')}

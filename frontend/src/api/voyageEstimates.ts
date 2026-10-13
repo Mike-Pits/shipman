@@ -1,5 +1,5 @@
-import { apiGet, apiPost, apiPut } from './client'
-import type { EstimateStatus, Fixture, FixtureCreate, VoyageEstimate, VoyageEstimateCreate } from './types'
+import { apiDelete, apiGet, apiPost, apiPut } from './client'
+import type { EstimateResults, EstimateStatus, Fixture, FixtureCreate, VoyageEstimate, VoyageEstimateCreate } from './types'
 
 export const listVoyageEstimates = () => apiGet<VoyageEstimate[]>('/voyage-estimates')
 export const createVoyageEstimate = (payload: VoyageEstimateCreate) =>
@@ -10,3 +10,6 @@ export const updateVoyageEstimateStatus = (id: number, status: Extract<EstimateS
   apiPost<VoyageEstimate>(`/voyage-estimates/${id}/status`, { status })
 export const promoteVoyageEstimate = (id: number, payload: FixtureCreate) =>
   apiPost<Fixture>(`/voyage-estimates/${id}/promote`, payload)
+export const calculateVoyageEstimate = (payload: VoyageEstimateCreate) =>
+  apiPost<EstimateResults>('/voyage-estimates/calculate', payload)
+export const deleteVoyageEstimate = (id: number) => apiDelete<void>(`/voyage-estimates/${id}`)

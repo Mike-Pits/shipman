@@ -20,7 +20,7 @@ class Fixture(Base):
     vat_rate_percent: Mapped[float | None] = mapped_column(Float, nullable=True)
 
     date_concluded: Mapped[str | None] = mapped_column(String, nullable=True)
-    charter_party_ref: Mapped[str | None] = mapped_column(String(15), nullable=True)
+    charter_party_ref: Mapped[str | None] = mapped_column(String(100), nullable=True)
     charter_party_type: Mapped[str | None] = mapped_column(String, nullable=True)
 
     # Voyage Charter fields (FR-07)

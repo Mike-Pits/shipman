@@ -1,6 +1,7 @@
 from datetime import date, timedelta
 
 from tests.test_vessels import vessel_payload
+from tests.test_voyage_estimates import estimate_payload
 
 
 def _create_vessel_with_expired_vetting(client):
@@ -82,23 +83,7 @@ def test_voyage_estimate_with_an_expired_vetting_vessel_is_flagged(client):
     expired_vessel_id = _create_vessel_with_expired_vetting(client)
 
     response = client.post(
-        "/voyage-estimates",
-        json={
-            "vessel_id": expired_vessel_id,
-            "load_port": "Ust-Luga",
-            "discharge_port": "Rotterdam",
-            "laycan_start": "2026-06-01",
-            "laycan_end": "2026-06-05",
-            "cargo_grade": "gasoil",
-            "estimated_cargo_quantity_mt": 5000,
-            "estimated_rate": 30,
-            "estimated_rate_basis": "per_tonne",
-            "currency": "USD",
-            "estimated_bunker_consumption_mt": 200,
-            "estimated_bunker_cost": 110000,
-            "estimated_port_costs": 20000,
-            "estimated_duration_days": 10,
-        },
+        "/voyage-estimates", json=estimate_payload(vessel_id=expired_vessel_id)
     )
 
     assert response.status_code == 201
@@ -106,24 +91,6 @@ def test_voyage_estimate_with_an_expired_vetting_vessel_is_flagged(client):
 
 
 def test_voyage_estimate_with_no_vessel_assigned_is_not_flagged(client):
-    response = client.post(
-        "/voyage-estimates",
-        json={
-            "vessel_id": None,
-            "load_port": "Ust-Luga",
-            "discharge_port": "Rotterdam",
-            "laycan_start": "2026-06-01",
-            "laycan_end": "2026-06-05",
-            "cargo_grade": "gasoil",
-            "estimated_cargo_quantity_mt": 5000,
-            "estimated_rate": 30,
-            "estimated_rate_basis": "per_tonne",
-            "currency": "USD",
-            "estimated_bunker_consumption_mt": 200,
-            "estimated_bunker_cost": 110000,
-            "estimated_port_costs": 20000,
-            "estimated_duration_days": 10,
-        },
-    )
+    response = client.post("/voyage-estimates", json=estimate_payload(vessel_id=None))
 
     assert response.json()["warnings"] == []
