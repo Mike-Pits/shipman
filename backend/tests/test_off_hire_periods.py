@@ -82,6 +82,58 @@ def test_off_hire_deduction_is_calculated_automatically_from_dates_and_hire_rate
     assert created["effective_deduction"] == 18000
 
 
+def test_off_hire_accepts_times_without_seconds_and_24_00_as_end_of_day(client):
+    voyage_id = _create_tc_out_voyage(client)
+
+    response = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 12:00",
+            "end_datetime": "2026-06-07 24:00",
+            "reason": "Main engine breakdown",
+        },
+    )
+
+    assert response.status_code == 201
+    created = response.json()
+    # stored in one canonical format; 24:00 on the 7th is midnight starting the 8th
+    assert created["start_datetime"] == "2026-06-05 12:00:00"
+    assert created["end_datetime"] == "2026-06-08 00:00:00"
+    assert created["duration_days"] == 2.5
+    assert created["calculated_deduction"] == 22500
+
+
+def test_off_hire_days_and_deduction_use_days_rounded_to_three_decimals(client):
+    voyage_id = _create_tc_out_voyage(client, fixture_overrides={"hire_rate": 1900000})
+
+    # 28 Dec 13:50 -> end of 31 Dec = 3 d 10 h 10 min = 3.4236111 days -> 3.424
+    response = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={
+            "start_datetime": "2026-06-05 13:50",
+            "end_datetime": "2026-06-08 24:00",
+            "reason": "Main engine breakdown",
+        },
+    )
+
+    assert response.status_code == 201
+    created = response.json()
+    assert created["duration_days"] == 3.424
+    assert created["calculated_deduction"] == 6505600.0
+
+
+def test_off_hire_rejects_an_unparseable_datetime_with_a_clear_error(client):
+    voyage_id = _create_tc_out_voyage(client)
+
+    response = client.post(
+        f"/voyages/{voyage_id}/off-hire-periods",
+        json={"start_datetime": "05/06/2026", "end_datetime": "2026-06-07", "reason": "x"},
+    )
+
+    assert response.status_code == 422
+    assert "start_datetime" in str(response.json()["detail"])
+
+
 def test_off_hire_deduction_includes_vat_when_hire_is_vat_exclusive(client):
     voyage_id = _create_tc_out_voyage(
         client,

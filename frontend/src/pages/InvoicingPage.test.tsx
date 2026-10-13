@@ -115,6 +115,91 @@ describe('InvoicingPage', () => {
       hire_period_start: '2026-06-01',
       hire_period_end: '2026-06-11',
     })
+    // inherited from the fixture server-side — an empty string here is rejected as an invalid currency
+    expect(body.currency).toBeUndefined()
+  })
+
+  it('pre-fills the VAT rate from the fixture and lets the operator override it per invoice', async () => {
+    const user = userEvent.setup()
+    const vatFixture = {
+      ...TC_OUT_FIXTURE,
+      id: 2,
+      charterer: 'VAT Charterers',
+      vat_applicable: true,
+      vat_treatment: 'exclusive',
+      vat_rate_percent: 22,
+    }
+    const fetchMock = mockFetchByUrl({
+      '/invoices': [
+        { status: 200, body: [] },
+        { status: 201, body: SAMPLE_INVOICE },
+        { status: 200, body: [SAMPLE_INVOICE] },
+      ],
+      '/fixtures': [{ status: 200, body: [TC_OUT_FIXTURE, vatFixture] }],
+      '/voyages': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/claims': [{ status: 200, body: [] }],
+    })
+
+    render(<InvoicingPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    // no VAT field for a fixture without VAT
+    await user.selectOptions(screen.getByLabelText(/fixture/i), '1')
+    expect(screen.queryByLabelText(/vat rate/i)).not.toBeInTheDocument()
+
+    await user.selectOptions(screen.getByLabelText(/fixture/i), '2')
+    const rate = screen.getByLabelText(/vat rate/i)
+    expect(rate).toHaveValue(22)
+
+    // a 2025 period is taxed at 20%
+    await user.clear(rate)
+    await user.type(rate, '20')
+    await user.type(screen.getByLabelText(/date of issue/i), '2025-12-29')
+    await user.selectOptions(screen.getByLabelText(/vessel/i), '1')
+    await user.type(screen.getByLabelText(/hire period start/i), '2025-12-01')
+    await user.type(screen.getByLabelText(/hire period end/i), '2025-12-11')
+    await user.click(screen.getByRole('button', { name: /create draft/i }))
+
+    const postCall = await waitFor(() => {
+      const call = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
+      if (!call) throw new Error('no POST call yet')
+      return call
+    })
+    const body = JSON.parse(postCall[1]!.body as string)
+    expect(body.vat_rate_percent).toBe(20)
+    // applicability and treatment still come from the fixture, not the form
+    expect(body.vat_treatment).toBeUndefined()
+    expect(body.vat_applicable).toBe(false)
+  })
+
+  it('shows a readable message when the API returns validation errors', async () => {
+    const user = userEvent.setup()
+    mockFetchByUrl({
+      '/invoices': [
+        { status: 200, body: [] },
+        {
+          status: 422,
+          body: { detail: [{ loc: ['body', 'hire_period_end'], msg: 'Field required', type: 'missing' }] },
+        },
+      ],
+      '/fixtures': [{ status: 200, body: [TC_OUT_FIXTURE] }],
+      '/voyages': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/claims': [{ status: 200, body: [] }],
+    })
+
+    render(<InvoicingPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    await user.type(screen.getByLabelText(/date of issue/i), '2026-07-01')
+    await user.selectOptions(screen.getByLabelText(/fixture/i), '1')
+    await user.selectOptions(screen.getByLabelText(/vessel/i), '1')
+    await user.type(screen.getByLabelText(/hire period start/i), '2026-06-01')
+    await user.type(screen.getByLabelText(/hire period end/i), '2026-06-11')
+    await user.click(screen.getByRole('button', { name: /create draft/i }))
+
+    expect(await screen.findByText('hire_period_end: Field required')).toBeInTheDocument()
   })
 
   it('lets the operator create a free-form invoice with a manually entered line', async () => {

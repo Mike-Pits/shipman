@@ -91,6 +91,19 @@ export default function InvoicingPage() {
   }, [])
 
   const fixtureById = (id: number | null) => fixtures.find((f) => f.id === id)
+  const voyageById = (id: number | null) => voyages.find((v) => v.id === id)
+  const linkedFixture = (f: InvoiceCreate) => {
+    if (f.invoice_type === 'hire') return fixtureById(f.fixture_id ?? null)
+    if (f.invoice_type === 'freight' || f.invoice_type === 'demurrage') {
+      return fixtureById(voyageById(f.voyage_id ?? null)?.fixture_id ?? null)
+    }
+    return undefined
+  }
+  // VAT applicability/treatment come from the fixture; the rate defaults to the fixture's
+  // but is editable per invoice (it follows the date of supply: 20% before 2026, 22% after).
+  const vatRateFor = (fixture: Fixture | undefined) =>
+    fixture?.vat_applicable ? fixture.vat_rate_percent : undefined
+  const inheritedFixture = linkedFixture(form)
 
   const tcOutFixtures = fixtures.filter((f) => f.fixture_type === 'time_charter_out')
   const freightEligibleVoyages = voyages.filter((v) => {
@@ -162,8 +175,24 @@ export default function InvoicingPage() {
     e.preventDefault()
     setError(null)
     try {
+      // currency / counterparty / subject / VAT terms are free-form-only inputs — every
+      // other type inherits them from its Fixture, so an empty string here would be
+      // rejected as an invalid currency.
+      const freeFormOnly =
+        form.invoice_type === 'free_form'
+          ? {}
+          : {
+              currency: undefined,
+              counterparty: undefined,
+              subject: undefined,
+              vat_applicable: false,
+              vat_treatment: undefined,
+              vat_rate_percent: linkedFixture(form)?.vat_applicable ? form.vat_rate_percent : undefined,
+            }
       const payload: InvoiceCreate = {
         ...form,
+        ...freeFormOnly,
+        due_date: form.due_date || null,
         lines: usesManualLines
           ? lines.map((l) => ({
               description: l.description,
@@ -303,7 +332,9 @@ export default function InvoicingPage() {
                             ))}
                             {inv.vat_applicable && (
                               <tr>
-                                <td colSpan={4}>{t('invoicing.vatAmount')}</td>
+                                <td colSpan={4}>
+                                  {t('invoicing.vatAmount')} ({inv.vat_rate_percent}%)
+                                </td>
                                 <td>{inv.vat_amount}</td>
                               </tr>
                             )}
@@ -354,7 +385,14 @@ export default function InvoicingPage() {
           <>
             <label>
               {t('invoicing.fixture')}
-              <select value={form.fixture_id ?? ''} onChange={field('fixture_id', true)} required>
+              <select
+                value={form.fixture_id ?? ''}
+                onChange={(e) => {
+                  const id = Number(e.target.value)
+                  setForm((f) => ({ ...f, fixture_id: id, vat_rate_percent: vatRateFor(fixtureById(id)) }))
+                }}
+                required
+              >
                 <option value="" disabled>
                   {t('invoicing.selectFixture')}
                 </option>
@@ -402,7 +440,18 @@ export default function InvoicingPage() {
         {(type === 'freight' || type === 'demurrage') && (
           <label>
             {t('invoicing.voyage')}
-            <select value={form.voyage_id ?? ''} onChange={field('voyage_id', true)} required>
+            <select
+              value={form.voyage_id ?? ''}
+              onChange={(e) => {
+                const id = Number(e.target.value)
+                setForm((f) => ({
+                  ...f,
+                  voyage_id: id,
+                  vat_rate_percent: vatRateFor(fixtureById(voyageById(id)?.fixture_id ?? null)),
+                }))
+              }}
+              required
+            >
               <option value="" disabled>
                 {t('invoicing.selectVoyage')}
               </option>
@@ -513,6 +562,22 @@ export default function InvoicingPage() {
               </>
             )}
           </>
+        )}
+
+        {type !== 'free_form' && inheritedFixture?.vat_applicable && (
+          <label>
+            {t('invoicing.vatRatePercent')}
+            <input
+              type="number"
+              step="0.01"
+              min="0"
+              max="100"
+              value={form.vat_rate_percent ?? ''}
+              onChange={field('vat_rate_percent', true)}
+              required
+            />
+            <small>{t('invoicing.vatRateHint')}</small>
+          </label>
         )}
 
         {usesManualLines && (

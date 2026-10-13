@@ -439,6 +439,7 @@
     "vatInclusive": "Rate includes VAT",
     "vatExclusive": "VAT added on top",
     "vatRatePercent": "VAT Rate (%)",
+    "vatRateHint": "Pre-filled from the fixture — change it if this period was taxed at a different rate (e.g. 20% for 2025 supplies, 22% from 1 Jan 2026).",
     "linesHeading": "Line Items",
     "lineDescription": "Description",
     "lineQuantity": "Quantity",

@@ -8,7 +8,7 @@ from app.models.fixture import Fixture
 from app.models.vessel import Vessel
 from app.models.voyage import Voyage
 from app.schemas.invoice import InvoiceCreate
-from app.services.flexible_datetime import UnparseableDateTime, parse_flexible_datetime
+from app.services.flexible_datetime import UnparseableDateTime, days_between, parse_flexible_datetime
 from app.services.vat import apply_vat_terms
 
 
@@ -49,11 +49,11 @@ def _hire_lines(fixture: Fixture, period_start_raw: str, period_end_raw: str) ->
     if period_end <= period_start:
         raise HTTPException(status_code=422, detail="hire_period_end must be after hire_period_start")
 
-    duration_days = (period_end - period_start).total_seconds() / 86400
+    duration_days = days_between(period_start, period_end)
     daily_rate = fixture.hire_rate if fixture.hire_rate_basis == "daily" else fixture.hire_rate / 30
     gross = round(daily_rate * duration_days, 2)
     return [
-        {"description": "Hire", "quantity": round(duration_days, 4), "unit": "day", "unit_price": daily_rate, "amount": gross}
+        {"description": "Hire", "quantity": duration_days, "unit": "day", "unit_price": daily_rate, "amount": gross}
     ] + _brokerage_lines(fixture, gross)
 
 
@@ -135,6 +135,11 @@ def resolve_invoice(payload: InvoiceCreate, db: Session) -> ResolvedInvoice:
         vat_applicable = fixture.vat_applicable
         vat_treatment = fixture.vat_treatment
         vat_rate_percent = fixture.vat_rate_percent
+        # applicability/treatment come from the fixture, but the rate is the operator's to
+        # set per invoice — it follows the date of supply (20% before 2026, 22% from
+        # 1 Jan 2026), which a single fixture-level rate can't represent.
+        if vat_applicable and payload.vat_rate_percent is not None:
+            vat_rate_percent = payload.vat_rate_percent
         counterparty = fixture.charterer
     else:
         currency = payload.currency

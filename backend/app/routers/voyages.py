@@ -1,5 +1,3 @@
-from datetime import datetime
-
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 
@@ -10,6 +8,7 @@ from app.models.vessel import Vessel
 from app.models.voyage import Voyage
 from app.schemas.off_hire_period import OffHirePeriodCreate, OffHirePeriodRead
 from app.schemas.voyage import VoyageCreate, VoyageRead
+from app.services.flexible_datetime import days_between, parse_flexible_datetime
 from app.services.vat import apply_vat
 from app.services.vetting import is_vetting_unfixable
 
@@ -94,9 +93,9 @@ def _tc_out_fixture_or_422(voyage: Voyage, db: Session) -> Fixture:
 
 
 def _calculated_deduction(fixture: Fixture, payload: OffHirePeriodCreate) -> float:
-    start = datetime.strptime(payload.start_datetime, "%Y-%m-%d %H:%M:%S")
-    end = datetime.strptime(payload.end_datetime, "%Y-%m-%d %H:%M:%S")
-    duration_days = (end - start).total_seconds() / 86400
+    start = parse_flexible_datetime(payload.start_datetime)
+    end = parse_flexible_datetime(payload.end_datetime)
+    duration_days = days_between(start, end)
     # off-hire deducts hire that would otherwise have been earned (and invoiced) for that
     # time, so the deduction is computed on the same VAT basis as the hire installments
     return apply_vat(round(_daily_hire_rate(fixture) * duration_days, 2), fixture)

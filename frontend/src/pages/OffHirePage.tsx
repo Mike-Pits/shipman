@@ -158,7 +158,7 @@ export default function OffHirePage() {
                 <input
                   value={form.start_datetime}
                   onChange={field('start_datetime')}
-                  placeholder="YYYY-MM-DD HH:MM:SS"
+                  placeholder="YYYY-MM-DD HH:MM"
                   required
                 />
               </label>
@@ -167,7 +167,7 @@ export default function OffHirePage() {
                 <input
                   value={form.end_datetime}
                   onChange={field('end_datetime')}
-                  placeholder="YYYY-MM-DD HH:MM:SS"
+                  placeholder="YYYY-MM-DD HH:MM"
                   required
                 />
               </label>

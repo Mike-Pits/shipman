@@ -1,6 +1,6 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import Currency
 
@@ -32,12 +32,12 @@ class InvoiceCreate(BaseModel):
     date_of_issue: str
     due_date: str | None = None
 
-    # Free-form only — ignored/overridden server-side for every other type, which
-    # inherit currency and VAT terms from their linked Fixture.
+    # Free-form only, except vat_rate_percent: every other type inherits currency and VAT
+    # applicability/treatment from its linked Fixture, but may override the VAT *rate*.
     currency: Currency | None = None
     vat_applicable: bool = False
     vat_treatment: VatTreatment | None = None
-    vat_rate_percent: float | None = None
+    vat_rate_percent: float | None = Field(default=None, ge=0, le=100)
     counterparty: str | None = None
     subject: str | None = None
 

@@ -318,7 +318,7 @@ This is an internal payment-request document (Russian **«Счёт»**), not a l
 
 **FR-59:** Invoice numbers are assigned only at issuance, from **one sequence shared across all four types**, per calendar year (`INV-<year>-<0001>`). A voided invoice's number is never reused.
 
-**FR-60:** Currency and VAT terms (FR-06a) are **inherited and locked** from the invoice's linked Fixture for Hire/Freight/Demurrage types. Free-form invoices carry their own VAT fields (applicable/treatment/rate) and free-typed counterparty and currency, since they have no Fixture to inherit from.
+**FR-60:** Currency and VAT terms (FR-06a) are **inherited from the invoice's linked Fixture** for Hire/Freight/Demurrage types: currency and VAT applicability/treatment are locked to the fixture, but the **VAT rate is editable per draft invoice**, pre-filled from the fixture — the rate follows the date of supply (Russian standard VAT was 20% through 2025 and 22% from 1 Jan 2026), which one fixture-level rate can't represent, and historical invoices back to 2021 need the rate in force at the time. Free-form invoices carry their own VAT fields (applicable/treatment/rate) and free-typed counterparty and currency, since they have no Fixture to inherit from.
 
 **FR-61:** Issuing an invoice creates **exactly one** linked Payment (FR-33) — `cost_category` `income`, status `invoiced`, amount equal to the invoice's total due, dated the invoice's date of issue. One invoice settles via one Payment (no split/partial-payment reconciliation); the operator corrects that Payment's amount and status as money actually arrives, same as any other payment. A Payment linked to a still-issued invoice cannot be deleted directly (FR-33) — void the invoice instead.
 
@@ -350,6 +350,8 @@ Not every day a vessel is on the books is spent under a fixture. A vessel can be
 
 **FR-71:** The Dashboard (FR-42) gains a live status tile: vessels with no open `employment` voyage covering **today** — i.e. currently on a ballast passage, currently in drydock, or with no voyage record at all for today (unaccounted). This is a live check ("what needs attention right now"), distinct from FR-70's historical rollup.
 
+
+**FR-72:** Every day count in the system — hire invoice quantity (FR-62), off-hire duration and deduction (FR-35), voyage duration and off-hire/earning days in TCE (FR-48), and the Fleet Utilization day buckets (FR-70) — is rounded to **3 decimals**, matching how accounting writes day counts on invoices. Amounts are computed from the rounded figure (quantity × unit price), so a printed invoice line always multiplies out exactly. Hire/off-hire period boundaries are accepted as `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, or with `24:00` meaning midnight at the end of that day.
 ---
 
 ## 5. Data Dictionary (Key Tables)

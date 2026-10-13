@@ -134,6 +134,121 @@ def test_hire_invoice_period_prorates_a_partial_final_day(client):
     assert response.json()["total_amount_due"] == 4500.0
 
 
+def test_hire_invoice_period_end_of_24_00_means_midnight_at_the_end_of_that_day(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)
+
+    response = client.post(
+        "/invoices",
+        json={
+            "invoice_type": "hire",
+            "date_of_issue": "2026-07-01",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "hire_period_start": "2026-06-01 00:00",
+            "hire_period_end": "2026-06-10 24:00",
+        },
+    )
+
+    assert response.status_code == 201
+    # 1 June 00:00 -> end of 10 June is exactly 10 days at 9000/day
+    assert response.json()["total_amount_due"] == 90000.0
+
+
+def test_hire_invoice_rounds_days_to_three_decimals_and_multiplies_out_exactly(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client, hire_rate=1900000.0)
+
+    # 28 Dec 13:50 -> end of 31 Dec is 3 d 10 h 10 min = 3.4236111 days, written as 3.424
+    response = client.post(
+        "/invoices",
+        json={
+            "invoice_type": "hire",
+            "date_of_issue": "2025-12-29",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "hire_period_start": "2025-12-28 13:50",
+            "hire_period_end": "2025-12-31 24:00",
+        },
+    )
+
+    assert response.status_code == 201
+    line = response.json()["lines"][0]
+    assert line["quantity"] == 3.424
+    assert line["amount"] == 6505600.0
+    # the printed line multiplies out exactly: quantity x unit price == amount
+    assert round(line["quantity"] * line["unit_price"], 2) == line["amount"]
+
+
+def test_hire_invoice_vat_rate_can_be_overridden_per_invoice(client):
+    vessel_id = _create_vessel(client)
+    # fixture carries today's 22%; this invoice is for a 2025 period, taxed at 20%
+    fixture_id = _create_fixture(
+        client, vat_applicable=True, vat_treatment="exclusive", vat_rate_percent=22
+    )
+    payload = {
+        "invoice_type": "hire",
+        "date_of_issue": "2025-12-29",
+        "fixture_id": fixture_id,
+        "vessel_id": vessel_id,
+        "hire_period_start": "2025-12-01",
+        "hire_period_end": "2025-12-11",
+    }
+
+    default_rate = client.post("/invoices", json=payload).json()
+    overridden = client.post("/invoices", json={**payload, "vat_rate_percent": 20}).json()
+
+    assert default_rate["vat_rate_percent"] == 22
+    assert default_rate["total_amount_due"] == 109800.0  # 90000 + 22%
+    assert overridden["vat_rate_percent"] == 20
+    assert overridden["vat_amount"] == 18000.0
+    assert overridden["total_amount_due"] == 108000.0  # 90000 + 20%
+
+
+def test_vat_rate_override_is_ignored_when_the_fixture_is_not_vat_applicable(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(client)  # no VAT
+
+    response = client.post(
+        "/invoices",
+        json={
+            "invoice_type": "hire",
+            "date_of_issue": "2025-12-29",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "hire_period_start": "2025-12-01",
+            "hire_period_end": "2025-12-11",
+            "vat_rate_percent": 20,
+        },
+    )
+
+    assert response.status_code == 201
+    assert response.json()["vat_amount"] == 0
+    assert response.json()["total_amount_due"] == 90000.0
+
+
+def test_vat_rate_override_rejects_a_nonsensical_rate(client):
+    vessel_id = _create_vessel(client)
+    fixture_id = _create_fixture(
+        client, vat_applicable=True, vat_treatment="exclusive", vat_rate_percent=22
+    )
+
+    response = client.post(
+        "/invoices",
+        json={
+            "invoice_type": "hire",
+            "date_of_issue": "2025-12-29",
+            "fixture_id": fixture_id,
+            "vessel_id": vessel_id,
+            "hire_period_start": "2025-12-01",
+            "hire_period_end": "2025-12-11",
+            "vat_rate_percent": -5,
+        },
+    )
+
+    assert response.status_code == 422
+
+
 def test_hire_invoice_deducts_brokerage_per_broker_and_vat_is_computed_on_gross(client):
     vessel_id = _create_vessel(client)
     fixture_id = _create_fixture(

@@ -247,3 +247,16 @@ def test_tce_rejects_a_non_employment_voyage(client):
     response = client.get(f"/reports/tce/{voyage_id}")
 
     assert response.status_code == 422
+
+
+def test_tce_uses_the_exact_time_of_day_of_voyage_boundaries(client):
+    voyage_id, vessel_id = _create_voyage(
+        client, start_date="2026-06-01 12:00", end_date="2026-06-11 12:00"
+    )
+    _create_payment(client, vessel_id, voyage_id, "income", "Freight", 1000000)
+
+    response = client.get(f"/reports/tce/{voyage_id}")
+
+    assert response.status_code == 200
+    assert response.json()["duration_days"] == 10
+    assert response.json()["tce_per_day"] == 100000

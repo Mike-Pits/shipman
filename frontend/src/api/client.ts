@@ -12,6 +12,22 @@ export class ApiError extends Error {
   }
 }
 
+// FastAPI returns `detail` as a plain string for HTTPException, but as a list of
+// {loc, msg} objects for request-validation (422) errors.
+function formatErrorDetail(detail: unknown): string | undefined {
+  if (typeof detail === 'string') return detail
+  if (Array.isArray(detail)) {
+    return detail
+      .map((item) => {
+        const field = Array.isArray(item?.loc) ? item.loc.filter((p: unknown) => p !== 'body').join('.') : ''
+        const msg = item?.msg ?? JSON.stringify(item)
+        return field ? `${field}: ${msg}` : msg
+      })
+      .join('; ')
+  }
+  return undefined
+}
+
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const response = await fetch(`${BASE_URL}${path}`, {
     headers: { 'Content-Type': 'application/json' },
@@ -19,7 +35,7 @@ async function request<T>(path: string, options?: RequestInit): Promise<T> {
   })
   if (!response.ok) {
     const body = await response.json().catch(() => ({ detail: response.statusText }))
-    throw new ApiError(response.status, body.detail ?? response.statusText)
+    throw new ApiError(response.status, formatErrorDetail(body.detail) ?? response.statusText)
   }
   if (response.status === 204) return undefined as T
   return response.json() as Promise<T>

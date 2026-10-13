@@ -216,11 +216,11 @@ export default function VoyagesPage() {
         )}
         <label>
           {t('voyages.startDate')}
-          <input value={form.start_date} onChange={field('start_date')} placeholder="YYYY-MM-DD" required />
+          <input value={form.start_date} onChange={field('start_date')} placeholder="YYYY-MM-DD HH:MM" required />
         </label>
         <label>
           {t('voyages.endDate')}
-          <input value={form.end_date ?? ''} onChange={field('end_date')} placeholder="YYYY-MM-DD" />
+          <input value={form.end_date ?? ''} onChange={field('end_date')} placeholder="YYYY-MM-DD HH:MM" />
         </label>
         {purpose === 'employment' && (
           <>

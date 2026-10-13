@@ -1,6 +1,8 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, model_validator
+from pydantic import BaseModel, ConfigDict, field_validator, model_validator
+
+from app.services.flexible_datetime import UnparseableDateTime, parse_flexible_datetime
 
 VoyagePurpose = Literal["employment", "ballast_passage", "drydock_repair"]
 
@@ -18,6 +20,19 @@ class VoyageCreate(BaseModel):
     cargo_quantity_mt: float | None = None
     laden: bool = False
     ice_notes: str | None = None
+
+    @field_validator("start_date", "end_date")
+    @classmethod
+    def validate_date_or_datetime(cls, value: str | None) -> str | None:
+        """Boundaries may carry a time of day (YYYY-MM-DD HH:MM) — consecutive voyages
+        hand over at an exact moment. Validated here, kept exactly as typed."""
+        if not value:
+            return value
+        try:
+            parse_flexible_datetime(value)
+        except UnparseableDateTime as exc:
+            raise ValueError(f"{exc} — use YYYY-MM-DD or YYYY-MM-DD HH:MM") from exc
+        return value
 
     @model_validator(mode="after")
     def validate_purpose_specific_fields(self) -> "VoyageCreate":

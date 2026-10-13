@@ -13,6 +13,7 @@ from app.models.vessel import Vessel
 from app.models.voyage import Voyage
 from app.models.voyage_estimate import VoyageEstimate
 from app.services.excel_export import ReportFormat, rows_to_xlsx_response
+from app.services.flexible_datetime import days_between, parse_flexible_datetime, round_days
 from app.services.vetting import current_vetting_status
 
 router = APIRouter(prefix="/reports", tags=["reports"])
@@ -94,24 +95,25 @@ def tce(voyage_id: int, format: ReportFormat = "json", db: Session = Depends(get
             detail="Voyage has no end date yet — TCE cannot be calculated until the voyage is complete",
         )
 
-    start = datetime.strptime(voyage.start_date, "%Y-%m-%d").date()
-    end = datetime.strptime(voyage.end_date, "%Y-%m-%d").date()
-    duration_days = (end - start).days
+    # voyage boundaries carry time of day (e.g. 2026-04-29 14:00), so duration is exact
+    start = parse_flexible_datetime(voyage.start_date)
+    end = parse_flexible_datetime(voyage.end_date)
+    duration_days = days_between(start, end)
 
     off_hire_periods = db.query(OffHirePeriod).filter(OffHirePeriod.voyage_id == voyage_id).all()
     off_hire_days = 0.0
     for period in off_hire_periods:
-        period_start = datetime.strptime(period.start_datetime, "%Y-%m-%d %H:%M:%S")
-        period_end = datetime.strptime(period.end_datetime, "%Y-%m-%d %H:%M:%S")
-        off_hire_days += (period_end - period_start).total_seconds() / 86400
+        period_start = parse_flexible_datetime(period.start_datetime)
+        period_end = parse_flexible_datetime(period.end_datetime)
+        off_hire_days += days_between(period_start, period_end)
     earning_days = duration_days - off_hire_days
 
     pnl = _voyage_pnl(voyage_id, db)
     result = {
         **pnl,
         "duration_days": duration_days,
-        "off_hire_days": round(off_hire_days, 2),
-        "earning_days": round(earning_days, 2),
+        "off_hire_days": round_days(off_hire_days),
+        "earning_days": round_days(earning_days),
         "tce_per_day": round(pnl["net_result"] / earning_days, 2),
     }
     if format == "xlsx":
@@ -169,8 +171,8 @@ def fleet_utilization(
     drydock time, plus off-hire (a subset of employment time, shown separately per
     the operator's preference — see the design discussion) and unaccounted days
     (calendar days in range with no voyage record at all — a data-entry gap flag)."""
-    q_start = datetime.strptime(start_date, "%Y-%m-%d")
-    q_end = datetime.strptime(end_date, "%Y-%m-%d")
+    q_start = parse_flexible_datetime(start_date)
+    q_end = parse_flexible_datetime(end_date)
     total_days = (q_end - q_start).total_seconds() / 86400
 
     rows = []
@@ -178,8 +180,8 @@ def fleet_utilization(
         voyages = db.query(Voyage).filter(Voyage.vessel_id == vessel.id).all()
         employment_days = ballast_days = drydock_days = 0.0
         for v in voyages:
-            v_start = datetime.strptime(v.start_date, "%Y-%m-%d")
-            v_end = datetime.strptime(v.end_date, "%Y-%m-%d") if v.end_date else None
+            v_start = parse_flexible_datetime(v.start_date)
+            v_end = parse_flexible_datetime(v.end_date) if v.end_date else None
             overlap = _overlap_days(v_start, v_end, q_start, q_end)
             if v.voyage_purpose == "employment":
                 employment_days += overlap
@@ -193,8 +195,8 @@ def fleet_utilization(
         if voyage_ids:
             periods = db.query(OffHirePeriod).filter(OffHirePeriod.voyage_id.in_(voyage_ids)).all()
             for period in periods:
-                p_start = datetime.strptime(period.start_datetime, "%Y-%m-%d %H:%M:%S")
-                p_end = datetime.strptime(period.end_datetime, "%Y-%m-%d %H:%M:%S")
+                p_start = parse_flexible_datetime(period.start_datetime)
+                p_end = parse_flexible_datetime(period.end_datetime)
                 off_hire_days += _overlap_days(p_start, p_end, q_start, q_end)
 
         unaccounted_days = max(0.0, total_days - employment_days - ballast_days - drydock_days)
@@ -203,11 +205,11 @@ def fleet_utilization(
             {
                 "vessel_id": vessel.id,
                 "vessel_name": vessel.name,
-                "employment_days": round(employment_days, 2),
-                "ballast_days": round(ballast_days, 2),
-                "drydock_days": round(drydock_days, 2),
-                "off_hire_days": round(off_hire_days, 2),
-                "unaccounted_days": round(unaccounted_days, 2),
+                "employment_days": round_days(employment_days),
+                "ballast_days": round_days(ballast_days),
+                "drydock_days": round_days(drydock_days),
+                "off_hire_days": round_days(off_hire_days),
+                "unaccounted_days": round_days(unaccounted_days),
             }
         )
     if format == "xlsx":
@@ -219,12 +221,17 @@ def fleet_utilization(
 def current_vessel_status(db: Session = Depends(get_db)):
     """Dashboard tile: which vessels have no open employment voyage covering
     today — i.e. currently idle/ballast, in drydock, or entirely unaccounted for."""
-    today = date.today().isoformat()
+    now = datetime.now()
     rows = []
     for vessel in db.query(Vessel).all():
         voyages = db.query(Voyage).filter(Voyage.vessel_id == vessel.id).all()
-        matches = [v for v in voyages if v.start_date <= today and (v.end_date is None or v.end_date >= today)]
-        current = max(matches, key=lambda v: v.start_date) if matches else None
+        matches = [
+            v
+            for v in voyages
+            if parse_flexible_datetime(v.start_date) <= now
+            and (not v.end_date or parse_flexible_datetime(v.end_date) >= now)
+        ]
+        current = max(matches, key=lambda v: parse_flexible_datetime(v.start_date)) if matches else None
         rows.append(
             {
                 "vessel_id": vessel.id,
