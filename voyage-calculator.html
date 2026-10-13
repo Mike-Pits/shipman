@@ -1,0 +1,1486 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Voyage Calculator</title>
+<style>
+:root{
+  --navy:#0B1F2E;
+  --navy-2:#132C40;
+  --paper:#F6F3EC;
+  --panel:#FFFFFF;
+  --ink:#1B2830;
+  --ink-soft:#5B6B74;
+  --brass:#B98B3E;
+  --brass-dark:#8C6A2E;
+  --steel:#3E6E90;
+  --steel-dark:#2C5064;
+  --positive:#2F7D4F;
+  --negative:#B23A2E;
+  --line:#D8D2C4;
+  --line-soft:#E7E2D6;
+  --font-display: Georgia, 'Iowan Old Style', 'Times New Roman', serif;
+  --font-ui: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, 'Liberation Mono', monospace;
+  --radius: 3px;
+}
+*{box-sizing:border-box;}
+html,body{margin:0;padding:0;}
+body{
+  background:var(--paper);
+  color:var(--ink);
+  font-family:var(--font-ui);
+  font-size:14px;
+  line-height:1.45;
+}
+h1,h2,h3{font-family:var(--font-display); margin:0; font-weight:600;}
+button{font-family:var(--font-ui); cursor:pointer;}
+input,select,textarea{font-family:var(--font-ui); font-size:13px;}
+input[type="number"]{font-family:var(--font-mono);}
+.mono{font-family:var(--font-mono);}
+a{color:var(--steel);}
+
+/* ===== Header ===== */
+.app-header{
+  background:var(--navy);
+  color:#EDE7D8;
+  padding:14px 20px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  flex-wrap:wrap;
+  gap:10px;
+  border-bottom:3px solid var(--brass);
+}
+.brand{display:flex; align-items:center; gap:10px;}
+.brand svg{width:30px; height:30px; flex-shrink:0;}
+.brand h1{font-size:19px; letter-spacing:0.04em; color:#F4EFE2;}
+.brand .sub{font-size:10px; letter-spacing:0.14em; text-transform:uppercase; color:var(--brass); font-family:var(--font-ui);}
+.header-controls{display:flex; align-items:center; gap:14px; flex-wrap:wrap;}
+.lang-toggle{display:flex; border:1px solid rgba(237,231,216,0.35); border-radius:var(--radius); overflow:hidden;}
+.lang-toggle button{
+  background:transparent; border:none; color:#C9C2AE; padding:6px 12px; font-size:12px; font-weight:600; letter-spacing:0.04em;
+}
+.lang-toggle button.active{background:var(--brass); color:var(--navy);}
+
+/* ===== Toolbar ===== */
+.toolbar{
+  background:var(--navy-2);
+  color:#DCD6C4;
+  padding:10px 20px;
+  display:flex;
+  align-items:center;
+  gap:18px;
+  flex-wrap:wrap;
+  font-size:12.5px;
+}
+.toolbar .field{display:flex; align-items:center; gap:6px;}
+.toolbar label{color:#A9A28D; font-size:11px; text-transform:uppercase; letter-spacing:0.05em;}
+.toolbar select{background:#0F2536; color:#EDE7D8; border:1px solid #2A4A5E; border-radius:var(--radius); padding:5px 8px; min-width:170px;}
+.spacer{flex:1;}
+
+/* ===== Buttons ===== */
+.btn{
+  border:1px solid var(--steel);
+  background:var(--panel);
+  color:var(--steel-dark);
+  padding:7px 14px;
+  border-radius:var(--radius);
+  font-size:12.5px;
+  font-weight:600;
+  letter-spacing:0.02em;
+  transition:background .12s, color .12s;
+}
+.btn:hover{background:var(--steel); color:#fff;}
+.btn:disabled{opacity:0.4; cursor:not-allowed;}
+.btn-primary{background:var(--steel); color:#fff; border-color:var(--steel-dark);}
+.btn-primary:hover{background:var(--steel-dark);}
+.btn-brass{background:var(--brass); border-color:var(--brass-dark); color:#2A1F0D;}
+.btn-brass:hover{background:var(--brass-dark); color:#fff;}
+.btn-danger{border-color:var(--negative); color:var(--negative); background:var(--panel);}
+.btn-danger:hover{background:var(--negative); color:#fff;}
+.btn-ghost{border:1px solid var(--line); background:transparent; color:var(--ink-soft);}
+.btn-ghost:hover{background:var(--line-soft);}
+.btn-sm{padding:4px 9px; font-size:11.5px;}
+.btn-icon{padding:5px 9px; font-size:14px; line-height:1;}
+.btn-dark-outline{border:1px solid rgba(237,231,216,0.4); background:transparent; color:#DCD6C4;}
+.btn-dark-outline:hover{background:rgba(237,231,216,0.12);}
+
+/* ===== Layout ===== */
+.main-grid{
+  display:grid;
+  grid-template-columns: minmax(420px, 1.15fr) minmax(360px, 0.85fr);
+  gap:18px;
+  padding:18px 20px 60px;
+  align-items:start;
+}
+@media (max-width: 980px){
+  .main-grid{grid-template-columns:1fr;}
+}
+.panel{
+  background:var(--panel);
+  border:1px solid var(--line);
+  border-radius:var(--radius);
+  margin-bottom:16px;
+}
+.panel-head{
+  padding:10px 16px;
+  border-bottom:1px solid var(--line-soft);
+  display:flex; align-items:center; justify-content:space-between;
+  background:linear-gradient(to bottom, #FBFAF6, #F5F2E9);
+}
+.panel-head h2{font-size:13px; text-transform:uppercase; letter-spacing:0.08em; color:var(--navy-2);}
+.panel-body{padding:14px 16px;}
+.results-col{position:sticky; top:14px;}
+
+.field-row{display:flex; gap:10px; flex-wrap:wrap; margin-bottom:10px;}
+.field{display:flex; flex-direction:column; gap:4px; flex:1; min-width:120px;}
+.field label{font-size:11px; color:var(--ink-soft); text-transform:uppercase; letter-spacing:0.03em;}
+.field input, .field select{
+  border:1px solid var(--line); border-radius:var(--radius); padding:7px 8px; background:#fff; color:var(--ink);
+}
+.field input:focus, .field select:focus{outline:2px solid var(--steel); outline-offset:-1px; border-color:var(--steel);}
+.radio-row{display:flex; gap:16px; align-items:center;}
+.radio-row label{display:flex; align-items:center; gap:5px; font-size:12.5px; cursor:pointer; text-transform:none;}
+.error-text{color:var(--negative); font-size:11px; margin-top:2px;}
+.hint{font-size:11px; color:var(--ink-soft); margin-bottom:8px;}
+
+table{width:100%; border-collapse:collapse; font-size:12.5px;}
+th{
+  text-align:left; font-size:10.5px; text-transform:uppercase; letter-spacing:0.03em; color:var(--ink-soft);
+  border-bottom:1px solid var(--line); padding:6px 6px; font-weight:600;
+}
+td{padding:5px 6px; border-bottom:1px solid var(--line-soft); vertical-align:middle;}
+td input, td select{width:100%; border:1px solid var(--line); border-radius:var(--radius); padding:5px 6px; background:#fff;}
+tr:last-child td{border-bottom:none;}
+.num-col{text-align:right;}
+.row-actions{display:flex; gap:4px;}
+
+.subsection{margin-top:14px; padding-top:12px; border-top:1px dashed var(--line);}
+.subsection:first-child{margin-top:0; padding-top:0; border-top:none;}
+.subsection-title{font-size:11.5px; font-weight:700; text-transform:uppercase; letter-spacing:0.05em; color:var(--navy-2); margin-bottom:8px;}
+
+.actions-bar{display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; padding-top:14px; border-top:1px solid var(--line-soft);}
+
+/* ===== Results ===== */
+.results-empty{padding:40px 20px; text-align:center; color:var(--ink-soft); font-style:italic;}
+.result-summary-grid{display:grid; grid-template-columns:1fr 1fr; gap:8px 16px; margin-bottom:4px;}
+.result-summary-grid .k{font-size:11px; color:var(--ink-soft); text-transform:uppercase;}
+.result-summary-grid .v{font-family:var(--font-mono); font-size:14px; font-weight:600;}
+.time-breakdown{display:flex; gap:14px; flex-wrap:wrap; margin:6px 0 2px;}
+.time-chip{background:var(--paper); border:1px solid var(--line); border-radius:var(--radius); padding:6px 10px; font-size:12px;}
+.time-chip b{font-family:var(--font-mono);}
+
+.cost-line{display:flex; justify-content:space-between; padding:4px 0; font-size:13px;}
+.cost-line.total{border-top:1px solid var(--ink); margin-top:6px; padding-top:8px; font-weight:700;}
+.cost-line .amt{font-family:var(--font-mono);}
+
+.tce-stamp-wrap{display:flex; justify-content:center; margin:18px 0 10px;}
+.tce-stamp{
+  border:3px double var(--brass-dark);
+  border-radius:6px;
+  padding:14px 26px;
+  text-align:center;
+  transform:rotate(-1.5deg);
+  background:repeating-linear-gradient(135deg, rgba(185,139,62,0.06) 0 8px, transparent 8px 16px);
+}
+.tce-stamp .lbl{font-size:10.5px; letter-spacing:0.18em; text-transform:uppercase; color:var(--brass-dark); font-weight:700;}
+.tce-stamp .val{font-family:var(--font-mono); font-size:30px; font-weight:700; color:var(--navy); margin-top:2px;}
+.tce-stamp .val.negative{color:var(--negative);}
+.tce-stamp .val.positive{color:var(--positive);}
+.tce-stamp .unit{font-size:11px; color:var(--ink-soft);}
+
+.demurrage-line{margin-top:10px; padding:8px 10px; border-radius:var(--radius); font-size:12.5px; background:var(--paper); border:1px solid var(--line);}
+.demurrage-line.has-demurrage{background:#FBEAE7; border-color:var(--negative); color:var(--negative); font-weight:600;}
+
+/* ===== Modal ===== */
+.modal-overlay{
+  position:fixed; inset:0; background:rgba(11,31,46,0.55); display:flex; align-items:flex-start; justify-content:center;
+  padding:40px 16px; overflow-y:auto; z-index:100;
+}
+.modal{
+  background:var(--panel); border-radius:var(--radius); width:100%; max-width:820px; border:1px solid var(--line);
+  box-shadow:0 12px 40px rgba(0,0,0,0.25);
+}
+.modal-head{padding:14px 18px; border-bottom:1px solid var(--line-soft); display:flex; justify-content:space-between; align-items:center; background:var(--navy); color:#EDE7D8; border-radius:var(--radius) var(--radius) 0 0;}
+.modal-head h2{font-size:15px; color:#F4EFE2;}
+.modal-body{padding:16px 18px; max-height:70vh; overflow-y:auto;}
+.modal-foot{padding:12px 18px; border-top:1px solid var(--line-soft); display:flex; justify-content:flex-end; gap:8px;}
+
+.vessel-list-item{
+  display:flex; justify-content:space-between; align-items:center; padding:9px 10px; border:1px solid var(--line); border-radius:var(--radius); margin-bottom:6px;
+}
+.vessel-list-item:hover{background:var(--paper);}
+.vessel-list-item .name{font-weight:600;}
+.vessel-list-item .meta{font-size:11px; color:var(--ink-soft);}
+
+.empty-state{text-align:center; padding:50px 20px; color:var(--ink-soft);}
+.empty-state h2{color:var(--navy-2); margin-bottom:8px; font-size:17px;}
+
+/* ===== Print ===== */
+@media print{
+  .app-header, .toolbar, .no-print, .input-col{display:none !important;}
+  body{background:#fff;}
+  .main-grid{grid-template-columns:1fr; padding:0;}
+  .panel{border:none; box-shadow:none;}
+  .results-col{position:static;}
+  .tce-stamp{transform:none;}
+}
+.tag-badge{display:inline-block; font-size:10px; padding:2px 6px; border-radius:10px; background:var(--line-soft); color:var(--ink-soft); margin-left:6px;}
+.footer-note{text-align:center; padding:16px; color:var(--ink-soft); font-size:11px;}
+</style>
+</head>
+<body>
+<div id="app"></div>
+<datalist id="port-suggestions"></datalist>
+<script>
+/* ==================================================================
+   VOYAGE CALCULATOR — offline single-file application
+   Sections: I18N, STORAGE, STATE, UTILS, CALC ENGINE, RENDER, EVENTS
+   ================================================================== */
+
+/* ==================== I18N ==================== */
+const I18N = {
+en: {
+  app: { title:"Voyage Calculator", tagline:"Preliminary TCE Voyage Estimator" },
+  header: { manageVessels:"Manage Vessels", managePorts:"Port List", vessel:"Vessel", newVoyage:"New Voyage" },
+  toolbar: { savedVoyages:"Saved Voyage", loadPlaceholder:"— select a saved voyage —", delete:"Delete", vesselLabel:"Vessel" },
+  section: { voyageInput:"Voyage Input", itinerary:"Itinerary", seaPassage:"Sea Passage", cargoFreight:"Cargo & Freight",
+             fuelPrices:"Fuel Prices", costs:"Costs", demurrage:"Demurrage", results:"Voyage Results" },
+  labels: { voyageName:"Voyage Name", vessel:"Vessel", currency:"Currency", mode:"Mode", extraSeaDays:"Extra Days at Sea",
+            extraCosts:"Extra Costs (lump sum)", freightMode:"Freight Mode", lumpsumFreight:"Lumpsum Freight",
+            pricePerMT:"Price per MT", canalFees:"Canal Fees", portCharges:"Port Charges", agentFees:"Agent Fees",
+            bunkerSurcharge:"Bunker Surcharge", description:"Description", amount:"Amount", demurrageRate:"Demurrage Rate (per day)",
+            vesselName:"Vessel Name", dwt:"DWT (MT)", fuelGrade:"Fuel Grade", speed:"Speed (kt)", consumption:"Consumption (MT/day)",
+            portName:"Port Name", extraCostItems:"Extra Cost Line Items" },
+  itinerary: { hint:"Up to 10 ports, in sequence.", empty:"No ports added yet." },
+  table: { port:"Port", type:"Type", distance:"Dist. (NM)", cargo:"Cargo (MT)", laytimeValue:"Laytime", laytimeUnit:"Unit",
+           laytimeBasis:"Basis", rate:"Rate (MT/day)", actions:"", grade:"Grade", quantity:"Qty (MT)", freightRate:"Rate ($/MT)",
+           fuelGrade:"Grade", fuelQty:"Qty (MT)", fuelCost:"Cost" },
+  type: { load:"Load", discharge:"Discharge" },
+  mode: { laden:"Laden", ballast:"Ballast", eco:"Eco" },
+  freightMode: { perMT:"Per MT", lumpsum:"Lumpsum" },
+  laytimeUnit: { hours:"Hours", days:"Days", mtPerHour:"MT/Hour", mtPerDay:"MT/Day" },
+  buttons: { addPort:"+ Add Port", remove:"Remove", addCargoLot:"+ Add Cargo Lot", addFuelGrade:"+ Add Fuel Grade",
+             addCostItem:"+ Add custom cost item", calculate:"Calculate Voyage", save:"Save", saveAs:"Save As",
+             printPdf:"Print PDF", cancel:"Cancel", close:"Close", create:"+ New Vessel", edit:"Edit",
+             delete:"Delete", duplicate:"Duplicate", addVessel:"+ New Vessel", addPortListEntry:"+ Add Port",
+             saveVessel:"Save Vessel", addPortToItinerary:"Use" },
+  results: { summary:"Voyage Summary", vessel:"Vessel", totalDistance:"Total Distance", totalVoyageDays:"Total Voyage Days",
+             timeBreakdown:"Time Breakdown", sea:"Sea", load:"Load", discharge:"Discharge", extra:"Extra",
+             fuelConsumption:"Fuel Consumption", costSummary:"Cost Summary", fuel:"Fuel", totalCosts:"Total Costs",
+             revenue:"Revenue", freight:"Freight", tce:"TCE", perDay:"per day", demurrage:"Demurrage",
+             noDespatch:"No demurrage — within laytime", placeholder:"Enter voyage details and click \u201CCalculate Voyage\u201D to see results.",
+             excessDays:"Excess days" },
+  vessel: { formTitle:"Vessel Profile", seaLaden:"Laden", seaBallast:"Ballast", seaEco:"Eco", portLoad:"In-Port · Load",
+            portDischarge:"In-Port · Discharge", inerting:"Inerting (optional)", search:"Search vessels…",
+            listEmpty:"No vessels yet. Create one to begin.", confirmDelete:"Delete this vessel? This cannot be undone." },
+  ports: { title:"Port List", hint:"Ports added here appear as suggestions in the itinerary.", empty:"No ports saved yet.",
+           confirmDelete:"Remove this port from the list?" },
+  confirm: { deleteVoyage:"Delete this saved voyage?", currencySwitch:"Switching currency clears monetary fields (no exchange conversion is applied). Continue?" },
+  messages: {
+    vesselNameRequired:"Vessel name is required", dwtInvalid:"DWT must be 0 or greater",
+    speedInvalid:"Speed must be between 0 and 99 knots", consumptionInvalid:"Consumption cannot be negative",
+    distanceInvalid:"Distance cannot be negative", cargoInvalid:"Cargo quantity cannot be negative",
+    laytimeInvalid:"Laytime value cannot be negative", rateInvalid:"Rate cannot be negative",
+    fuelPriceInvalid:"Fuel price cannot be negative", freightRateInvalid:"Freight rate cannot be negative",
+    lumpsumInvalid:"Lumpsum freight cannot be negative", costInvalid:"Cost cannot be negative",
+    demurrageRateInvalid:"Demurrage rate cannot be negative", extraDaysInvalid:"Extra days cannot be negative",
+    itineraryEmpty:"Voyage must have at least 1 port", cargoLotsInvalid:"Add at least one cargo lot with valid quantity and rate",
+    fuelPriceMissing:"Please enter price for {grade}", voyageNameRequired:"Voyage name is required",
+    vesselRequired:"Select a vessel first", fixErrors:"Please fix the highlighted fields before calculating."
+  },
+  empty: { noVessels:"No vessels in your fleet yet.", noVesselsHint:"Add your first vessel to start building voyage estimates.",
+           addFirstVessel:"+ Add First Vessel" },
+  footer:"Offline TCE estimator · data stored locally in this browser only",
+  credit:"Developed by Mikhail Pitsukov · LLC \u201CTC Nord Project\u201D, Arkhangelsk · mikhail.pitsukov@yandex.ru · +7 985 765-56-25"
+},
+ru: {
+  app: { title:"Калькулятор рейса", tagline:"Предварительный расчёт TCE" },
+  header: { manageVessels:"Управление судами", managePorts:"Список портов", vessel:"Судно", newVoyage:"Новый рейс" },
+  toolbar: { savedVoyages:"Сохранённый рейс", loadPlaceholder:"— выберите сохранённый рейс —", delete:"Удалить", vesselLabel:"Судно" },
+  section: { voyageInput:"Данные рейса", itinerary:"Маршрут", seaPassage:"Морской переход", cargoFreight:"Груз и фрахт",
+             fuelPrices:"Цены на топливо", costs:"Расходы", demurrage:"Демередж", results:"Результаты рейса" },
+  labels: { voyageName:"Название рейса", vessel:"Судно", currency:"Валюта", mode:"Режим", extraSeaDays:"Доп. сутки в море",
+            extraCosts:"Доп. расходы (паушально)", freightMode:"Режим фрахта", lumpsumFreight:"Люмпсум фрахт",
+            pricePerMT:"Цена за MT", canalFees:"Канальные сборы", portCharges:"Портовые сборы", agentFees:"Агентские",
+            bunkerSurcharge:"Бункерная надбавка", description:"Описание", amount:"Сумма", demurrageRate:"Ставка демереджа (в сутки)",
+            vesselName:"Название судна", dwt:"Дедвейт (MT)", fuelGrade:"Марка топлива", speed:"Скорость (уз)", consumption:"Расход (MT/сут)",
+            portName:"Название порта", extraCostItems:"Дополнительные статьи расходов" },
+  itinerary: { hint:"До 10 портов, по порядку.", empty:"Порты ещё не добавлены." },
+  table: { port:"Порт", type:"Тип", distance:"Расст. (NM)", cargo:"Груз (MT)", laytimeValue:"Сталия", laytimeUnit:"Ед.",
+           laytimeBasis:"Базис", rate:"Ставка (MT/сут)", actions:"", grade:"Груз", quantity:"Кол-во (MT)", freightRate:"Ставка ($/MT)",
+           fuelGrade:"Марка", fuelQty:"Кол-во (MT)", fuelCost:"Стоимость" },
+  type: { load:"Погрузка", discharge:"Выгрузка" },
+  mode: { laden:"Гружёный", ballast:"Балласт", eco:"Эко" },
+  freightMode: { perMT:"За MT", lumpsum:"Люмпсум" },
+  laytimeUnit: { hours:"Часы", days:"Сутки", mtPerHour:"MT/час", mtPerDay:"MT/сутки" },
+  buttons: { addPort:"+ Добавить порт", remove:"Удалить", addCargoLot:"+ Добавить партию груза", addFuelGrade:"+ Добавить марку топлива",
+             addCostItem:"+ Добавить статью расходов", calculate:"Рассчитать рейс", save:"Сохранить", saveAs:"Сохранить как",
+             printPdf:"Печать PDF", cancel:"Отмена", close:"Закрыть", create:"+ Новое судно", edit:"Редактировать",
+             delete:"Удалить", duplicate:"Дублировать", addVessel:"+ Новое судно", addPortListEntry:"+ Добавить порт",
+             saveVessel:"Сохранить судно", addPortToItinerary:"Выбрать" },
+  results: { summary:"Сводка рейса", vessel:"Судно", totalDistance:"Общее расстояние", totalVoyageDays:"Всего суток рейса",
+             timeBreakdown:"Разбивка времени", sea:"Море", load:"Погрузка", discharge:"Выгрузка", extra:"Доп.",
+             fuelConsumption:"Расход топлива", costSummary:"Сводка расходов", fuel:"Топливо", totalCosts:"Итого расходы",
+             revenue:"Доход", freight:"Фрахт", tce:"TCE", perDay:"в сутки", demurrage:"Демередж",
+             noDespatch:"Демередж отсутствует — в пределах сталии", placeholder:"Введите данные рейса и нажмите «Рассчитать рейс», чтобы увидеть результаты.",
+             excessDays:"Сверхнормативные сутки" },
+  vessel: { formTitle:"Профиль судна", seaLaden:"Гружёный", seaBallast:"Балласт", seaEco:"Эко", portLoad:"В порту · Погрузка",
+            portDischarge:"В порту · Выгрузка", inerting:"Инертизация (опц.)", search:"Поиск судов…",
+            listEmpty:"Судов пока нет. Создайте первое.", confirmDelete:"Удалить это судно? Действие необратимо." },
+  ports: { title:"Список портов", hint:"Порты из списка будут предлагаться в маршруте рейса.", empty:"Порты ещё не сохранены.",
+           confirmDelete:"Удалить этот порт из списка?" },
+  confirm: { deleteVoyage:"Удалить этот сохранённый рейс?", currencySwitch:"При смене валюты денежные поля будут очищены (конвертация курса не выполняется). Продолжить?" },
+  messages: {
+    vesselNameRequired:"Название судна обязательно", dwtInvalid:"Дедвейт должен быть 0 или больше",
+    speedInvalid:"Скорость должна быть от 0 до 99 узлов", consumptionInvalid:"Расход не может быть отрицательным",
+    distanceInvalid:"Расстояние не может быть отрицательным", cargoInvalid:"Количество груза не может быть отрицательным",
+    laytimeInvalid:"Сталийное время не может быть отрицательным", rateInvalid:"Ставка не может быть отрицательной",
+    fuelPriceInvalid:"Цена топлива не может быть отрицательной", freightRateInvalid:"Ставка фрахта не может быть отрицательной",
+    lumpsumInvalid:"Люмпсум не может быть отрицательным", costInvalid:"Затраты не могут быть отрицательными",
+    demurrageRateInvalid:"Ставка демереджа не может быть отрицательной", extraDaysInvalid:"Дополнительные сутки не могут быть отрицательными",
+    itineraryEmpty:"Рейс должен иметь как минимум 1 порт", cargoLotsInvalid:"Добавьте хотя бы одну партию груза с действительным количеством и ставкой",
+    fuelPriceMissing:"Пожалуйста, введите цену для {grade}", voyageNameRequired:"Название рейса обязательно",
+    vesselRequired:"Сначала выберите судно", fixErrors:"Пожалуйста, исправьте отмеченные поля перед расчётом."
+  },
+  empty: { noVessels:"В вашем флоте пока нет судов.", noVesselsHint:"Добавьте первое судно, чтобы начать расчёт рейсов.",
+           addFirstVessel:"+ Добавить первое судно" },
+  footer:"Офлайн-калькулятор TCE · данные хранятся только локально в этом браузере",
+  credit:"Разработчик: Михаил Пицуков · ООО «ТК Норд Проджект», Архангельск · mikhail.pitsukov@yandex.ru · +7 985 765-56-25"
+}
+};
+
+function t(key){
+  const lang = state.settings.language;
+  const path = key.split('.');
+  let node = I18N[lang];
+  for(const p of path){ node = node && node[p]; }
+  if(node === undefined){
+    node = I18N.en;
+    for(const p of path){ node = node && node[p]; }
+  }
+  return node !== undefined ? node : key;
+}
+
+/* ==================== STORAGE ==================== */
+const STORAGE_KEYS = { settings:'vc_settings', vessels:'vc_vessels', voyages:'vc_voyages', ports:'vc_ports' };
+const Storage = {
+  load(key, fallback){
+    try{
+      const raw = localStorage.getItem(key);
+      if(!raw) return fallback;
+      return JSON.parse(raw);
+    }catch(e){
+      console.warn('Storage load failed for', key, e);
+      return fallback;
+    }
+  },
+  save(key, value){
+    try{
+      localStorage.setItem(key, JSON.stringify(value));
+      return true;
+    }catch(e){
+      console.warn('Storage save failed for', key, e);
+      return false;
+    }
+  }
+};
+
+/* ==================== UTILS ==================== */
+function uid(){
+  return 'id-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,8);
+}
+function num(v){
+  const n = parseFloat(v);
+  return isNaN(n) ? 0 : n;
+}
+/* Fuel grade names are free text entered separately across multiple consumption tables
+   (sea modes, port load/discharge, inerting). Users switching keyboard layouts commonly
+   produce visually-identical but distinct strings (Cyrillic "М" vs Latin "M", different
+   dash characters, stray whitespace, mixed case), which the app would otherwise treat as
+   different fuel grades. Normalize to a canonical form so these merge correctly. */
+/* Fuel grade names are free text entered separately across multiple consumption tables
+   (sea modes, port load/discharge, inerting). The same grade often ends up recorded
+   twice: once in Latin (e.g. "MGO", "VLSFO") and once as a Cyrillic phonetic
+   transliteration of the same abbreviation (e.g. "МГО", "ВЛСФО" — spelling out M-G-O /
+   V-L-S-F-O with Cyrillic letters), plus incidental differences in whitespace, dash
+   characters, or case. The app would otherwise treat these as different fuel grades.
+   Normalize to a canonical Latin form so they merge correctly. */
+const CYRILLIC_TO_LATIN = {
+  'А':'A','Б':'B','В':'V','Г':'G','Д':'D','Е':'E','Ё':'E','Ж':'ZH','З':'Z','И':'I','Й':'Y',
+  'К':'K','Л':'L','М':'M','Н':'N','О':'O','П':'P','Р':'R','С':'S','Т':'T','У':'U','Ф':'F',
+  'Х':'KH','Ц':'TS','Ч':'CH','Ш':'SH','Щ':'SHCH','Ъ':'','Ы':'Y','Ь':'','Э':'E','Ю':'YU','Я':'YA'
+};
+function normalizeGrade(s){
+  if(s === undefined || s === null) return '';
+  let g = String(s).trim().replace(/\s+/g, ' ').toUpperCase();
+  g = g.replace(/[\u2010\u2011\u2012\u2013\u2014\u2015\u2212]/g, '-'); // unify dash variants to '-'
+  g = g.split('').map(ch => CYRILLIC_TO_LATIN[ch] !== undefined ? CYRILLIC_TO_LATIN[ch] : ch).join('');
+  return g;
+}
+function normalizeVesselGrades(vessel){
+  ['laden','ballast','eco'].forEach(mode => {
+    (vessel.seaConsumption[mode]||[]).forEach(fc => { if(fc.grade) fc.grade = normalizeGrade(fc.grade); });
+  });
+  ['portLoadConsumption','portDischargeConsumption','inertingConsumption'].forEach(f => {
+    (vessel[f]||[]).forEach(fc => { if(fc.grade) fc.grade = normalizeGrade(fc.grade); });
+  });
+  return vessel;
+}
+function escapeHtml(str){
+  if(str === undefined || str === null) return '';
+  return String(str).replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+function currencySymbol(cur){ return cur === 'RUB' ? '\u20BD' : '$'; }
+function fmtMoney(v, cur){
+  const sym = currencySymbol(cur);
+  const sign = v < 0 ? '-' : '';
+  const abs = Math.abs(v);
+  return sign + sym + abs.toLocaleString(undefined, {minimumFractionDigits:0, maximumFractionDigits:0});
+}
+function fmtNum(v, digits){
+  digits = digits === undefined ? 1 : digits;
+  return (v||0).toLocaleString(undefined, {minimumFractionDigits:digits, maximumFractionDigits:digits});
+}
+function getPath(obj, path){
+  return path.split('.').reduce((o,k)=> (o===undefined||o===null) ? undefined : o[k], obj);
+}
+function setPath(obj, path, value){
+  const parts = path.split('.');
+  let node = obj;
+  for(let i=0;i<parts.length-1;i++){
+    node = node[parts[i]];
+  }
+  node[parts[parts.length-1]] = value;
+}
+function debounce(fn, ms){
+  let h;
+  return function(...args){ clearTimeout(h); h = setTimeout(()=>fn.apply(this,args), ms); };
+}
+
+/* ==================== DATA FACTORIES ==================== */
+function newFuelConsumption(){ return { grade:'', speed:0, consumption:0 }; }
+function newPortConsumption(){ return { grade:'', consumption:0 }; }
+function newVessel(){
+  return {
+    id: uid(),
+    name: '',
+    dwt: 0,
+    seaConsumption: { laden:[newFuelConsumption()], ballast:[], eco:[] },
+    portLoadConsumption: [ {grade:'MGO', consumption:0} ],
+    portDischargeConsumption: [ {grade:'MGO', consumption:0} ],
+    inertingConsumption: []
+  };
+}
+function newPortStop(isFirst){
+  return {
+    id: uid(),
+    portName:'', type:'load', distanceFromPrev: isFirst?0:0, cargoQuantity:0,
+    laytimeValue:0, laytimeUnit:'days', laytimeBasis:'SHINC', rate:0
+  };
+}
+function newVoyage(vesselId){
+  return {
+    id: uid(),
+    name:'',
+    vesselId: vesselId || '',
+    currency: state.settings.currency || 'USD',
+    freightMode:'perMT',
+    lumpsumFreight:0,
+    cargoLots:[ {grade:'', quantity:0, freightRate:0} ],
+    itinerary:[ newPortStop(true) ],
+    seaMode:'laden',
+    extraSeaDays:0,
+    extraCosts:0,
+    fuelPrices:{},
+    canalFees:0, portCharges:0, agentFees:0, bunkerSurcharge:0,
+    extraCostItems:[],
+    demurrageRate:0,
+    createdAt: Date.now()
+  };
+}
+
+/* ==================== STATE ==================== */
+const state = {
+  settings: Storage.load(STORAGE_KEYS.settings, { language:'en', currency:'USD' }),
+  vessels: Storage.load(STORAGE_KEYS.vessels, []),
+  voyages: Storage.load(STORAGE_KEYS.voyages, []),
+  ports: Storage.load(STORAGE_KEYS.ports, []),
+  currentVoyage: null,
+  currentVoyageSavedId: null,
+  lastResult: null,
+  errors: {},
+  ui: {
+    vesselModalOpen:false, portModalOpen:false,
+    vesselDraft:null, vesselDraftErrors:{},
+    vesselSearch:''
+  }
+};
+if(state.vessels.length){
+  state.currentVoyage = newVoyage(state.vessels[0].id);
+} else {
+  state.currentVoyage = newVoyage('');
+}
+
+function persistSettings(){ Storage.save(STORAGE_KEYS.settings, state.settings); }
+function persistVessels(){ Storage.save(STORAGE_KEYS.vessels, state.vessels); }
+function persistVoyages(){ Storage.save(STORAGE_KEYS.voyages, state.voyages); }
+function persistPorts(){ Storage.save(STORAGE_KEYS.ports, state.ports); }
+
+function allVesselGrades(vessel){
+  const set = new Set();
+  ['laden','ballast','eco'].forEach(m => (vessel.seaConsumption[m]||[]).forEach(fc => fc.grade && set.add(fc.grade)));
+  (vessel.portLoadConsumption||[]).forEach(fc => fc.grade && set.add(fc.grade));
+  (vessel.portDischargeConsumption||[]).forEach(fc => fc.grade && set.add(fc.grade));
+  (vessel.inertingConsumption||[]).forEach(fc => fc.grade && set.add(fc.grade));
+  return Array.from(set);
+}
+function syncFuelPricesWithVessel(voyage, vessel){
+  if(!vessel) return;
+  const grades = allVesselGrades(vessel);
+  const prices = {};
+  grades.forEach(g => { prices[g] = (voyage.fuelPrices && voyage.fuelPrices[g] !== undefined) ? voyage.fuelPrices[g] : 0; });
+  // preserve any manually-added extra grades not in vessel profile, but fold stray
+  // near-duplicates (differing only by case/whitespace/homoglyph) into the canonical grade
+  const canonicalByNorm = {};
+  grades.forEach(g => { canonicalByNorm[normalizeGrade(g)] = g; });
+  Object.keys(voyage.fuelPrices || {}).forEach(g => {
+    if(g in prices) return;
+    const norm = normalizeGrade(g);
+    const canonical = canonicalByNorm[norm];
+    if(canonical){
+      if(!prices[canonical]) prices[canonical] = voyage.fuelPrices[g]; // keep whichever price is non-zero
+    } else {
+      prices[g] = voyage.fuelPrices[g];
+    }
+  });
+  voyage.fuelPrices = prices;
+}
+
+/* ==================== CALC ENGINE ==================== */
+function convertLaytimeToDays(port){
+  const val = num(port.laytimeValue);
+  if(port.laytimeUnit === 'hours') return val/24;
+  if(port.laytimeUnit === 'days') return val;
+  if(port.laytimeUnit === 'mtPerHour') return val>0 ? num(port.cargoQuantity)/(val*24) : 0;
+  if(port.laytimeUnit === 'mtPerDay') return val>0 ? num(port.cargoQuantity)/val : 0;
+  return 0;
+}
+function portDaysFor(port){
+  const rate = num(port.rate);
+  if(rate > 0) return num(port.cargoQuantity)/rate;
+  return convertLaytimeToDays(port);
+}
+function calcVoyage(voyage, vessel){
+  const itinerary = voyage.itinerary || [];
+  const totalDistance = itinerary.reduce((s,p)=> s + num(p.distanceFromPrev), 0);
+
+  let modeArr = vessel.seaConsumption[voyage.seaMode];
+  let effectiveMode = voyage.seaMode;
+  if(!modeArr || modeArr.length === 0){ modeArr = vessel.seaConsumption.laden || []; effectiveMode = 'laden'; }
+  const selectedSpeed = (modeArr[0] && num(modeArr[0].speed)) || 0;
+  // Speed is in knots = nautical miles per HOUR, so distance/speed gives hours; divide by 24 for days.
+  const seaDays = (selectedSpeed>0 ? (totalDistance/(selectedSpeed*24)) : 0) + num(voyage.extraSeaDays);
+
+  const portDaysList = itinerary.map(p => ({ port:p, days: portDaysFor(p) }));
+  const totalPortDays = portDaysList.reduce((s,x)=> s+x.days, 0);
+  const totalVoyageDays = seaDays + totalPortDays;
+
+  const fuelMap = {};
+  const addFuel = (grade, qty) => {
+    if(!grade) return;
+    if(!fuelMap[grade]) fuelMap[grade] = { quantity:0, cost:0 };
+    fuelMap[grade].quantity += qty;
+  };
+  modeArr.forEach(fc => addFuel(fc.grade, num(fc.consumption)*seaDays));
+  let loadDays = 0, dischargeDays = 0;
+  portDaysList.forEach(({port,days}) => {
+    if(port.type === 'load'){ loadDays += days; (vessel.portLoadConsumption||[]).forEach(fc=> addFuel(fc.grade, num(fc.consumption)*days)); }
+    else { dischargeDays += days; (vessel.portDischargeConsumption||[]).forEach(fc=> addFuel(fc.grade, num(fc.consumption)*days)); }
+  });
+  (vessel.inertingConsumption||[]).forEach(fc => addFuel(fc.grade, num(fc.consumption)*seaDays));
+
+  let totalFuelCost = 0;
+  Object.keys(fuelMap).forEach(grade => {
+    const price = num((voyage.fuelPrices||{})[grade]);
+    fuelMap[grade].cost = fuelMap[grade].quantity * price;
+    totalFuelCost += fuelMap[grade].cost;
+  });
+
+  let freightRevenue = 0;
+  if(voyage.freightMode === 'lumpsum'){
+    freightRevenue = num(voyage.lumpsumFreight);
+  } else {
+    freightRevenue = (voyage.cargoLots||[]).reduce((s,l)=> s + num(l.quantity)*num(l.freightRate), 0);
+  }
+
+  const extraItemsTotal = (voyage.extraCostItems||[]).reduce((s,it)=> s+num(it.amount), 0);
+  const otherCosts = num(voyage.canalFees)+num(voyage.portCharges)+num(voyage.agentFees)+num(voyage.bunkerSurcharge)+num(voyage.extraCosts)+extraItemsTotal;
+
+  let totalAllowedLaytimeDays = 0;
+  itinerary.forEach(p => { if(num(p.laytimeValue) > 0) totalAllowedLaytimeDays += convertLaytimeToDays(p); });
+  const excessDays = Math.max(0, totalPortDays - totalAllowedLaytimeDays);
+  const demurrage = excessDays * num(voyage.demurrageRate);
+
+  const totalVoyageCosts = totalFuelCost + otherCosts + demurrage;
+  const tce = totalVoyageDays > 0 ? (freightRevenue - totalVoyageCosts) / totalVoyageDays : 0;
+
+  return {
+    totalDistance, seaDays, totalPortDays, totalVoyageDays, loadDays, dischargeDays,
+    fuelConsumption: fuelMap, totalFuelCost, totalFreightRevenue: freightRevenue,
+    otherCosts, extraItemsTotal, totalVoyageCosts, tce, demurrage, excessDays,
+    totalAllowedLaytimeDays, effectiveMode
+  };
+}
+
+/* ==================== VALIDATION ==================== */
+function validateVoyage(voyage, vessel){
+  const errs = {};
+  if(!voyage.name || !voyage.name.trim()) errs['name'] = t('messages.voyageNameRequired');
+  if(!vessel) errs['vesselId'] = t('messages.vesselRequired');
+  if(!voyage.itinerary || voyage.itinerary.length === 0) errs['itinerary'] = t('messages.itineraryEmpty');
+  (voyage.itinerary||[]).forEach((p,i) => {
+    if(num(p.distanceFromPrev) < 0) errs['port.'+i+'.distanceFromPrev'] = t('messages.distanceInvalid');
+    if(num(p.cargoQuantity) < 0) errs['port.'+i+'.cargoQuantity'] = t('messages.cargoInvalid');
+    if(num(p.laytimeValue) < 0) errs['port.'+i+'.laytimeValue'] = t('messages.laytimeInvalid');
+    if(num(p.rate) < 0) errs['port.'+i+'.rate'] = t('messages.rateInvalid');
+  });
+  if(num(voyage.extraSeaDays) < 0) errs['extraSeaDays'] = t('messages.extraDaysInvalid');
+  if(voyage.freightMode === 'lumpsum'){
+    if(num(voyage.lumpsumFreight) < 0) errs['lumpsumFreight'] = t('messages.lumpsumInvalid');
+  } else {
+    const valid = (voyage.cargoLots||[]).some(l => num(l.quantity)>0 && num(l.freightRate)>0);
+    if(!valid) errs['cargoLots'] = t('messages.cargoLotsInvalid');
+    (voyage.cargoLots||[]).forEach((l,i) => { if(num(l.freightRate) < 0) errs['lot.'+i+'.freightRate'] = t('messages.freightRateInvalid'); });
+  }
+  ['canalFees','portCharges','agentFees','bunkerSurcharge','extraCosts','demurrageRate'].forEach(f => {
+    if(num(voyage[f]) < 0) errs[f] = t('messages.costInvalid');
+  });
+  (voyage.extraCostItems||[]).forEach((it,i) => { if(num(it.amount) < 0) errs['extraItem.'+i] = t('messages.costInvalid'); });
+  if(vessel){
+    allVesselGrades(vessel).forEach(g => {
+      const price = (voyage.fuelPrices||{})[g];
+      if(price === undefined || price === null || price === '') errs['fuelPrice.'+g] = t('messages.fuelPriceMissing').replace('{grade}', g);
+      else if(num(price) < 0) errs['fuelPrice.'+g] = t('messages.fuelPriceInvalid');
+    });
+  }
+  return errs;
+}
+function validateVessel(v){
+  const errs = {};
+  if(!v.name || !v.name.trim()) errs['name'] = t('messages.vesselNameRequired');
+  if(v.name && v.name.length > 100) errs['name'] = t('messages.vesselNameRequired');
+  if(num(v.dwt) < 0) errs['dwt'] = t('messages.dwtInvalid');
+  ['laden','ballast','eco'].forEach(mode => {
+    (v.seaConsumption[mode]||[]).forEach((fc,i) => {
+      if(fc.grade){
+        if(num(fc.speed) <= 0 || num(fc.speed) > 99) errs['sea.'+mode+'.'+i+'.speed'] = t('messages.speedInvalid');
+        if(num(fc.consumption) < 0) errs['sea.'+mode+'.'+i+'.consumption'] = t('messages.consumptionInvalid');
+      }
+    });
+  });
+  ['portLoadConsumption','portDischargeConsumption','inertingConsumption'].forEach(f => {
+    (v[f]||[]).forEach((fc,i) => { if(fc.grade && num(fc.consumption) < 0) errs[f+'.'+i] = t('messages.consumptionInvalid'); });
+  });
+  return errs;
+}
+
+/* ==================== RENDER: HEADER / TOOLBAR ==================== */
+function renderHeader(){
+  const lang = state.settings.language;
+  return `
+  <header class="app-header">
+    <div class="brand">
+      <svg viewBox="0 0 40 40" fill="none"><circle cx="20" cy="20" r="18" stroke="#B98B3E" stroke-width="1.5"/>
+        <path d="M20 6 L20 34 M9 14 L31 14 M9 26 L31 26" stroke="#B98B3E" stroke-width="1.2"/>
+        <path d="M20 10 L24 20 L20 30 L16 20 Z" fill="#B98B3E"/></svg>
+      <div><h1>${t('app.title')}</h1><div class="sub">${t('app.tagline')}</div></div>
+    </div>
+    <div class="header-controls">
+      <div class="lang-toggle" data-role="lang-toggle">
+        <button data-action="set-lang" data-lang="en" class="${lang==='en'?'active':''}">EN</button>
+        <button data-action="set-lang" data-lang="ru" class="${lang==='ru'?'active':''}">RU</button>
+      </div>
+      <button class="btn btn-dark-outline btn-sm" data-action="open-port-modal">${t('header.managePorts')}</button>
+      <button class="btn btn-dark-outline btn-sm" data-action="open-vessel-modal">${t('header.manageVessels')}</button>
+    </div>
+  </header>`;
+}
+
+function renderToolbar(){
+  const v = state.currentVoyage;
+  const vesselOptions = state.vessels.map(ve => `<option value="${ve.id}" ${v.vesselId===ve.id?'selected':''}>${escapeHtml(ve.name)}</option>`).join('');
+  const savedOptions = state.voyages.map(sv => `<option value="${sv.id}" ${state.currentVoyageSavedId===sv.id?'selected':''}>${escapeHtml(sv.name)} (${escapeHtml(sv.vesselNameSnapshot||'')})</option>`).join('');
+  return `
+  <div class="toolbar">
+    <div class="field">
+      <label>${t('toolbar.vesselLabel')}</label>
+      <select data-action="change-vessel">
+        <option value="">—</option>
+        ${vesselOptions}
+      </select>
+    </div>
+    <div class="field">
+      <label>${t('toolbar.savedVoyages')}</label>
+      <select data-action="load-voyage">
+        <option value="">${t('toolbar.loadPlaceholder')}</option>
+        ${savedOptions}
+      </select>
+    </div>
+    ${state.currentVoyageSavedId ? `<button class="btn btn-danger btn-sm" data-action="delete-saved-voyage">${t('toolbar.delete')}</button>` : ''}
+    <div class="spacer"></div>
+    <button class="btn btn-dark-outline btn-sm" data-action="new-voyage">${t('header.newVoyage')}</button>
+  </div>`;
+}
+
+/* ==================== RENDER: VOYAGE INPUT FORM ==================== */
+function fieldError(path){
+  const msg = state.errors[path];
+  return msg ? `<div class="error-text">${escapeHtml(msg)}</div>` : '';
+}
+function errClass(path){ return state.errors[path] ? 'style="border-color:var(--negative)"' : ''; }
+
+function renderItinerarySection(){
+  const v = state.currentVoyage;
+  const rows = (v.itinerary||[]).map((p,i) => `
+    <tr>
+      <td>${i+1}</td>
+      <td><input list="port-suggestions" value="${escapeHtml(p.portName)}" data-path="itinerary.${i}.portName" data-input-type="text" placeholder="${t('labels.portName')}"></td>
+      <td>
+        <select data-path="itinerary.${i}.type" data-input-type="select-rerender">
+          <option value="load" ${p.type==='load'?'selected':''}>${t('type.load')}</option>
+          <option value="discharge" ${p.type==='discharge'?'selected':''}>${t('type.discharge')}</option>
+        </select>
+      </td>
+      <td class="num-col"><input type="number" step="any" min="0" ${i===0?'disabled':''} value="${i===0?0:p.distanceFromPrev}" data-path="itinerary.${i}.distanceFromPrev" data-input-type="number" ${errClass('port.'+i+'.distanceFromPrev')}></td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${p.cargoQuantity}" data-path="itinerary.${i}.cargoQuantity" data-input-type="number" ${errClass('port.'+i+'.cargoQuantity')}></td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${p.laytimeValue}" data-path="itinerary.${i}.laytimeValue" data-input-type="number" ${errClass('port.'+i+'.laytimeValue')}></td>
+      <td>
+        <select data-path="itinerary.${i}.laytimeUnit" data-input-type="select">
+          ${['hours','days','mtPerHour','mtPerDay'].map(u=>`<option value="${u}" ${p.laytimeUnit===u?'selected':''}>${t('laytimeUnit.'+u)}</option>`).join('')}
+        </select>
+      </td>
+      <td>
+        <select data-path="itinerary.${i}.laytimeBasis" data-input-type="select">
+          ${['CQD','WIBON','WIPON','FIO','SHINC','SHEX'].map(b=>`<option value="${b}" ${p.laytimeBasis===b?'selected':''}>${b}</option>`).join('')}
+        </select>
+      </td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${p.rate}" data-path="itinerary.${i}.rate" data-input-type="number" ${errClass('port.'+i+'.rate')}></td>
+      <td class="row-actions">
+        <button class="btn btn-ghost btn-icon" data-action="remove-port" data-index="${i}" title="${t('buttons.remove')}">&times;</button>
+      </td>
+    </tr>`).join('');
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.itinerary')}</h2></div>
+    <div class="panel-body">
+      <div class="hint">${t('itinerary.hint')}</div>
+      ${fieldError('itinerary')}
+      <div style="overflow-x:auto;">
+      <table>
+        <thead><tr>
+          <th>#</th><th>${t('table.port')}</th><th>${t('table.type')}</th><th>${t('table.distance')}</th>
+          <th>${t('table.cargo')}</th><th>${t('table.laytimeValue')}</th><th>${t('table.laytimeUnit')}</th>
+          <th>${t('table.laytimeBasis')}</th><th>${t('table.rate')}</th><th></th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+      </div>
+      <div style="margin-top:8px;">
+        <button class="btn btn-ghost btn-sm" data-action="add-port" ${(v.itinerary||[]).length>=10?'disabled':''}>${t('buttons.addPort')}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderSeaPassageSection(){
+  const v = state.currentVoyage;
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.seaPassage')}</h2></div>
+    <div class="panel-body">
+      <div class="field-row">
+        <div class="field">
+          <label>${t('labels.mode')}</label>
+          <select data-path="seaMode" data-input-type="select-rerender">
+            <option value="laden" ${v.seaMode==='laden'?'selected':''}>${t('mode.laden')}</option>
+            <option value="ballast" ${v.seaMode==='ballast'?'selected':''}>${t('mode.ballast')}</option>
+            <option value="eco" ${v.seaMode==='eco'?'selected':''}>${t('mode.eco')}</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>${t('labels.extraSeaDays')}</label>
+          <input type="number" step="any" min="0" value="${v.extraSeaDays}" data-path="extraSeaDays" data-input-type="number" ${errClass('extraSeaDays')}>
+          ${fieldError('extraSeaDays')}
+        </div>
+        <div class="field">
+          <label>${t('labels.extraCosts')} (${currencySymbol(v.currency)})</label>
+          <input type="number" step="any" min="0" value="${v.extraCosts}" data-path="extraCosts" data-input-type="number" ${errClass('extraCosts')}>
+          ${fieldError('extraCosts')}
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCargoSection(){
+  const v = state.currentVoyage;
+  const lots = (v.cargoLots||[]).map((l,i) => `
+    <tr>
+      <td><input value="${escapeHtml(l.grade)}" data-path="cargoLots.${i}.grade" data-input-type="text" placeholder="${t('table.grade')}"></td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${l.quantity}" data-path="cargoLots.${i}.quantity" data-input-type="number"></td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${l.freightRate}" data-path="cargoLots.${i}.freightRate" data-input-type="number" ${errClass('lot.'+i+'.freightRate')}></td>
+      <td class="row-actions"><button class="btn btn-ghost btn-icon" data-action="remove-lot" data-index="${i}">&times;</button></td>
+    </tr>`).join('');
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.cargoFreight')}</h2></div>
+    <div class="panel-body">
+      <div class="radio-row" style="margin-bottom:12px;">
+        <label><input type="radio" name="freightMode" value="perMT" data-path="freightMode" data-input-type="radio-rerender" ${v.freightMode==='perMT'?'checked':''}> ${t('freightMode.perMT')}</label>
+        <label><input type="radio" name="freightMode" value="lumpsum" data-path="freightMode" data-input-type="radio-rerender" ${v.freightMode==='lumpsum'?'checked':''}> ${t('freightMode.lumpsum')}</label>
+      </div>
+      ${v.freightMode === 'lumpsum' ? `
+        <div class="field" style="max-width:260px;">
+          <label>${t('labels.lumpsumFreight')} (${currencySymbol(v.currency)})</label>
+          <input type="number" step="any" min="0" value="${v.lumpsumFreight}" data-path="lumpsumFreight" data-input-type="number" ${errClass('lumpsumFreight')}>
+          ${fieldError('lumpsumFreight')}
+        </div>` : `
+        ${fieldError('cargoLots')}
+        <table>
+          <thead><tr><th>${t('table.grade')}</th><th>${t('table.quantity')}</th><th>${t('table.freightRate')}</th><th></th></tr></thead>
+          <tbody>${lots}</tbody>
+        </table>
+        <div style="margin-top:8px;">
+          <button class="btn btn-ghost btn-sm" data-action="add-lot" ${(v.cargoLots||[]).length>=3?'disabled':''}>${t('buttons.addCargoLot')}</button>
+        </div>`}
+    </div>
+  </div>`;
+}
+
+function renderFuelPricesSection(){
+  const v = state.currentVoyage;
+  const grades = Object.keys(v.fuelPrices||{});
+  const rows = grades.map(g => `
+    <div class="field" style="min-width:150px;">
+      <label>${escapeHtml(g)} (${currencySymbol(v.currency)}/MT)</label>
+      <input type="number" step="any" min="0" value="${v.fuelPrices[g]}" data-path="fuelPrices.${g}" data-input-type="number-key" ${errClass('fuelPrice.'+g)}>
+      ${fieldError('fuelPrice.'+g)}
+    </div>`).join('');
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.fuelPrices')}</h2></div>
+    <div class="panel-body">
+      <div class="field-row">${rows || '<div class="hint">'+t('vessel.search')+'</div>'}</div>
+      <div class="field-row" style="align-items:flex-end;">
+        <div class="field" style="max-width:200px;"><label>${t('labels.fuelGrade')}</label><input type="text" id="new-fuel-grade" placeholder="e.g. LSMGO"></div>
+        <button class="btn btn-ghost btn-sm" data-action="add-fuel-grade">${t('buttons.addFuelGrade')}</button>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderCostsSection(){
+  const v = state.currentVoyage;
+  const sym = currencySymbol(v.currency);
+  const items = (v.extraCostItems||[]).map((it,i) => `
+    <tr>
+      <td><input value="${escapeHtml(it.description)}" data-path="extraCostItems.${i}.description" data-input-type="text" placeholder="${t('labels.description')}"></td>
+      <td class="num-col"><input type="number" step="any" min="0" value="${it.amount}" data-path="extraCostItems.${i}.amount" data-input-type="number"></td>
+      <td class="row-actions"><button class="btn btn-ghost btn-icon" data-action="remove-cost-item" data-index="${i}">&times;</button></td>
+    </tr>`).join('');
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.costs')}</h2></div>
+    <div class="panel-body">
+      <div class="field-row">
+        <div class="field"><label>${t('labels.canalFees')} (${sym})</label><input type="number" step="any" min="0" value="${v.canalFees}" data-path="canalFees" data-input-type="number" ${errClass('canalFees')}></div>
+        <div class="field"><label>${t('labels.portCharges')} (${sym})</label><input type="number" step="any" min="0" value="${v.portCharges}" data-path="portCharges" data-input-type="number" ${errClass('portCharges')}></div>
+      </div>
+      <div class="field-row">
+        <div class="field"><label>${t('labels.agentFees')} (${sym})</label><input type="number" step="any" min="0" value="${v.agentFees}" data-path="agentFees" data-input-type="number" ${errClass('agentFees')}></div>
+        <div class="field"><label>${t('labels.bunkerSurcharge')} (${sym})</label><input type="number" step="any" min="0" value="${v.bunkerSurcharge}" data-path="bunkerSurcharge" data-input-type="number" ${errClass('bunkerSurcharge')}></div>
+      </div>
+      <div class="subsection">
+        <div class="subsection-title">${t('labels.extraCostItems')}</div>
+        ${items ? `<table><thead><tr><th>${t('labels.description')}</th><th>${t('labels.amount')}</th><th></th></tr></thead><tbody>${items}</tbody></table>` : ''}
+        <div style="margin-top:8px;"><button class="btn btn-ghost btn-sm" data-action="add-cost-item">${t('buttons.addCostItem')}</button></div>
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderDemurrageSection(){
+  const v = state.currentVoyage;
+  return `
+  <div class="panel">
+    <div class="panel-head"><h2>${t('section.demurrage')}</h2></div>
+    <div class="panel-body">
+      <div class="field" style="max-width:260px;">
+        <label>${t('labels.demurrageRate')} (${currencySymbol(v.currency)})</label>
+        <input type="number" step="any" min="0" value="${v.demurrageRate}" data-path="demurrageRate" data-input-type="number" ${errClass('demurrageRate')}>
+        ${fieldError('demurrageRate')}
+      </div>
+    </div>
+  </div>`;
+}
+
+function renderVoyageInputPanel(){
+  const v = state.currentVoyage;
+  const errCount = Object.keys(state.errors||{}).length;
+  return `
+  <div class="input-col">
+    ${errCount ? `<div class="error-text" style="margin-bottom:10px; padding:9px 12px; background:#FBEAE7; border:1px solid var(--negative); border-radius:var(--radius); font-weight:600;">${t('messages.fixErrors')}</div>` : ''}
+    <div class="panel">
+      <div class="panel-head"><h2>${t('section.voyageInput')}</h2></div>
+      <div class="panel-body">
+        <div class="field-row">
+          <div class="field" style="flex:1.4;">
+            <label>${t('labels.voyageName')}</label>
+            <input type="text" value="${escapeHtml(v.name)}" data-path="name" data-input-type="text" ${errClass('name')}>
+            ${fieldError('name')}
+          </div>
+          <div class="field">
+            <label>${t('labels.currency')}</label>
+            <div class="radio-row" style="padding-top:7px;">
+              <label><input type="radio" name="currency" value="USD" data-input-type="currency" ${v.currency==='USD'?'checked':''}> USD</label>
+              <label><input type="radio" name="currency" value="RUB" data-input-type="currency" ${v.currency==='RUB'?'checked':''}> RUB</label>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    ${renderItinerarySection()}
+    ${renderSeaPassageSection()}
+    ${renderCargoSection()}
+    ${renderFuelPricesSection()}
+    ${renderCostsSection()}
+    ${renderDemurrageSection()}
+    <div class="actions-bar">
+      <button class="btn btn-primary" data-action="calculate">${t('buttons.calculate')}</button>
+      <button class="btn btn-brass" data-action="save-voyage">${t('buttons.save')}</button>
+      <button class="btn btn-ghost" data-action="save-voyage-as">${t('buttons.saveAs')}</button>
+    </div>
+  </div>`;
+}
+
+/* ==================== RENDER: RESULTS ==================== */
+function renderResultsPanel(){
+  const v = state.currentVoyage;
+  const r = state.lastResult;
+  const sym = currencySymbol(v.currency);
+  if(!r){
+    return `
+    <div class="results-col">
+      <div class="panel">
+        <div class="panel-head"><h2>${t('section.results')}</h2></div>
+        <div class="results-empty">${t('results.placeholder')}</div>
+      </div>
+    </div>`;
+  }
+  const vessel = state.vessels.find(ve => ve.id === v.vesselId);
+  const fuelRows = Object.keys(r.fuelConsumption).map(g => `
+    <tr><td>${escapeHtml(g)}</td><td class="num-col mono">${fmtNum(r.fuelConsumption[g].quantity,1)}</td><td class="num-col mono">${fmtMoney(r.fuelConsumption[g].cost, v.currency)}</td></tr>
+  `).join('') || `<tr><td colspan="3" style="color:var(--ink-soft);">—</td></tr>`;
+  const tceClass = r.tce < 0 ? 'negative' : (r.tce > 0 ? 'positive' : '');
+  const demurrageHtml = r.demurrage > 0
+    ? `<div class="demurrage-line has-demurrage">${t('results.demurrage')}: ${fmtMoney(r.demurrage, v.currency)} &nbsp;(${t('results.excessDays')}: ${fmtNum(r.excessDays,2)})</div>`
+    : `<div class="demurrage-line">${t('results.demurrage')}: ${fmtMoney(0, v.currency)} — ${t('results.noDespatch')}</div>`;
+  return `
+  <div class="results-col">
+    <div class="panel">
+      <div class="panel-head"><h2>${t('section.results')}</h2>
+        <button class="btn btn-ghost btn-sm no-print" data-action="print-pdf">${t('buttons.printPdf')}</button>
+      </div>
+      <div class="panel-body">
+        <div class="subsection">
+          <div class="subsection-title">${t('results.summary')}</div>
+          <div class="result-summary-grid">
+            <div><div class="k">${t('results.vessel')}</div><div class="v" style="font-size:13px;">${escapeHtml(vessel?vessel.name:'')}</div></div>
+            <div><div class="k">${t('results.totalDistance')}</div><div class="v">${fmtNum(r.totalDistance,0)} NM</div></div>
+            <div><div class="k">${t('results.totalVoyageDays')}</div><div class="v">${fmtNum(r.totalVoyageDays,2)} d</div></div>
+          </div>
+        </div>
+        <div class="subsection">
+          <div class="subsection-title">${t('results.timeBreakdown')}</div>
+          <div class="time-breakdown">
+            <div class="time-chip">${t('results.sea')}: <b>${fmtNum(r.seaDays,2)}d</b></div>
+            <div class="time-chip">${t('results.load')}: <b>${fmtNum(r.loadDays,2)}d</b></div>
+            <div class="time-chip">${t('results.discharge')}: <b>${fmtNum(r.dischargeDays,2)}d</b></div>
+            ${num(v.extraSeaDays)>0?`<div class="time-chip">${t('results.extra')}: <b>${fmtNum(v.extraSeaDays,2)}d</b></div>`:''}
+          </div>
+        </div>
+        <div class="subsection">
+          <div class="subsection-title">${t('results.fuelConsumption')}</div>
+          <table>
+            <thead><tr><th>${t('table.fuelGrade')}</th><th class="num-col">${t('table.fuelQty')}</th><th class="num-col">${t('table.fuelCost')}</th></tr></thead>
+            <tbody>${fuelRows}</tbody>
+          </table>
+        </div>
+        <div class="subsection">
+          <div class="subsection-title">${t('results.costSummary')}</div>
+          <div class="cost-line"><span>${t('results.fuel')}</span><span class="amt">${fmtMoney(r.totalFuelCost, v.currency)}</span></div>
+          <div class="cost-line"><span>${t('labels.canalFees')}</span><span class="amt">${fmtMoney(num(v.canalFees), v.currency)}</span></div>
+          <div class="cost-line"><span>${t('labels.portCharges')}</span><span class="amt">${fmtMoney(num(v.portCharges), v.currency)}</span></div>
+          <div class="cost-line"><span>${t('labels.agentFees')}</span><span class="amt">${fmtMoney(num(v.agentFees), v.currency)}</span></div>
+          <div class="cost-line"><span>${t('labels.bunkerSurcharge')}</span><span class="amt">${fmtMoney(num(v.bunkerSurcharge), v.currency)}</span></div>
+          <div class="cost-line"><span>${t('labels.extraCosts')}</span><span class="amt">${fmtMoney(num(v.extraCosts)+r.extraItemsTotal, v.currency)}</span></div>
+          ${r.demurrage>0?`<div class="cost-line"><span>${t('results.demurrage')}</span><span class="amt">${fmtMoney(r.demurrage, v.currency)}</span></div>`:''}
+          <div class="cost-line total"><span>${t('results.totalCosts')}</span><span class="amt">${fmtMoney(r.totalVoyageCosts, v.currency)}</span></div>
+        </div>
+        <div class="subsection">
+          <div class="subsection-title">${t('results.revenue')}</div>
+          <div class="cost-line"><span>${t('results.freight')}</span><span class="amt">${fmtMoney(r.totalFreightRevenue, v.currency)}</span></div>
+        </div>
+        <div class="tce-stamp-wrap">
+          <div class="tce-stamp">
+            <div class="lbl">${t('results.tce')}</div>
+            <div class="val ${tceClass}">${fmtMoney(r.tce, v.currency)}</div>
+            <div class="unit">${sym} ${t('results.perDay')}</div>
+          </div>
+        </div>
+        ${demurrageHtml}
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ==================== RENDER: EMPTY STATE ==================== */
+function renderEmptyState(){
+  return `
+  <div class="empty-state">
+    <h2>${t('empty.noVessels')}</h2>
+    <p>${t('empty.noVesselsHint')}</p>
+    <button class="btn btn-primary" data-action="vessel-new-modal">${t('empty.addFirstVessel')}</button>
+  </div>`;
+}
+
+/* ==================== RENDER: VESSEL MODAL ==================== */
+function vesselErrClass(key){
+  return (state.ui.vesselDraftErrors && state.ui.vesselDraftErrors[key]) ? 'style="border-color:var(--negative)"' : '';
+}
+function fuelRowsHtml(basePath, arr, includeSpeed, target){
+  return (arr||[]).map((fc,i) => `
+    <tr>
+      <td><input value="${escapeHtml(fc.grade)}" data-path="${basePath}.${i}.grade" data-input-type="text" data-target="${target}" placeholder="${t('labels.fuelGrade')}"></td>
+      ${includeSpeed ? `<td class="num-col"><input type="number" step="any" min="0" max="99" value="${fc.speed}" data-path="${basePath}.${i}.speed" data-input-type="number" data-target="${target}" ${vesselErrClass('sea.'+basePath.split('.')[1]+'.'+i+'.speed')}></td>` : ''}
+      <td class="num-col"><input type="number" step="any" min="0" value="${fc.consumption}" data-path="${basePath}.${i}.consumption" data-input-type="number" data-target="${target}" ${vesselErrClass(includeSpeed ? ('sea.'+basePath.split('.')[1]+'.'+i+'.consumption') : (basePath+'.'+i))}></td>
+      <td><button class="btn btn-ghost btn-icon" data-action="vessel-remove-row" data-section="${basePath}" data-index="${i}">&times;</button></td>
+    </tr>`).join('');
+}
+function vesselFuelTable(basePath, arr, includeSpeed, target){
+  return `
+    <table>
+      <thead><tr><th>${t('labels.fuelGrade')}</th>${includeSpeed?`<th>${t('labels.speed')}</th>`:''}<th>${t('labels.consumption')}</th><th></th></tr></thead>
+      <tbody>${fuelRowsHtml(basePath, arr, includeSpeed, target)}</tbody>
+    </table>
+    <button class="btn btn-ghost btn-sm" style="margin-top:6px;" data-action="vessel-add-row" data-section="${basePath}" data-speed="${includeSpeed?1:0}">${t('buttons.addFuelGrade')}</button>`;
+}
+function renderVesselForm(){
+  const dv = state.ui.vesselDraft;
+  const errs = state.ui.vesselDraftErrors || {};
+  const errAt = (k) => errs[k] ? `<div class="error-text">${escapeHtml(errs[k])}</div>` : '';
+  const errList = Object.values(errs);
+  const errBanner = errList.length ? `<div class="error-text" style="margin-bottom:10px; padding:8px 10px; background:#FBEAE7; border:1px solid var(--negative); border-radius:var(--radius);">${errList.map(escapeHtml).join('<br>')}</div>` : '';
+  return `
+  ${errBanner}
+  <div class="field-row">
+    <div class="field" style="flex:2;">
+      <label>${t('labels.vesselName')}</label>
+      <input type="text" value="${escapeHtml(dv.name)}" data-path="name" data-input-type="text" data-target="vessel" maxlength="100" ${errs['name']?'style="border-color:var(--negative)"':''}>
+      ${errAt('name')}
+    </div>
+    <div class="field">
+      <label>${t('labels.dwt')}</label>
+      <input type="number" step="any" min="0" value="${dv.dwt}" data-path="dwt" data-input-type="number" data-target="vessel" ${errs['dwt']?'style="border-color:var(--negative)"':''}>
+      ${errAt('dwt')}
+    </div>
+  </div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.seaLaden')}</div>${vesselFuelTable('seaConsumption.laden', dv.seaConsumption.laden, true, 'vessel')}</div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.seaBallast')}</div>${vesselFuelTable('seaConsumption.ballast', dv.seaConsumption.ballast, true, 'vessel')}</div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.seaEco')}</div>${vesselFuelTable('seaConsumption.eco', dv.seaConsumption.eco, true, 'vessel')}</div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.portLoad')}</div>${vesselFuelTable('portLoadConsumption', dv.portLoadConsumption, false, 'vessel')}</div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.portDischarge')}</div>${vesselFuelTable('portDischargeConsumption', dv.portDischargeConsumption, false, 'vessel')}</div>
+  <div class="subsection"><div class="subsection-title">${t('vessel.inerting')}</div>${vesselFuelTable('inertingConsumption', dv.inertingConsumption, false, 'vessel')}</div>
+  `;
+}
+function renderVesselList(){
+  const search = (state.ui.vesselSearch||'').toLowerCase();
+  const list = state.vessels.filter(v => v.name.toLowerCase().includes(search));
+  const items = list.map(v => `
+    <div class="vessel-list-item">
+      <div><div class="name">${escapeHtml(v.name)}</div><div class="meta">DWT ${fmtNum(v.dwt,0)} · ${allVesselGrades(v).join(', ')||'—'}</div></div>
+      <div class="row-actions">
+        <button class="btn btn-ghost btn-sm" data-action="vessel-edit" data-id="${v.id}">${t('buttons.edit')}</button>
+        <button class="btn btn-ghost btn-sm" data-action="vessel-duplicate" data-id="${v.id}">${t('buttons.duplicate')}</button>
+        <button class="btn btn-danger btn-sm" data-action="vessel-delete" data-id="${v.id}">${t('buttons.delete')}</button>
+      </div>
+    </div>`).join('');
+  return `
+    <div class="field" style="max-width:280px; margin-bottom:12px;">
+      <input type="text" placeholder="${t('vessel.search')}" value="${escapeHtml(state.ui.vesselSearch||'')}" data-action-input="vessel-search">
+    </div>
+    ${items || `<div class="hint">${t('vessel.listEmpty')}</div>`}
+    <div style="margin-top:10px;"><button class="btn btn-primary btn-sm" data-action="vessel-new">${t('buttons.addVessel')}</button></div>
+  `;
+}
+function renderVesselModal(){
+  if(!state.ui.vesselModalOpen) return '';
+  const editing = !!state.ui.vesselDraft;
+  return `
+  <div class="modal-overlay" data-overlay="vessel">
+    <div class="modal">
+      <div class="modal-head"><h2>${editing ? t('vessel.formTitle') : t('header.manageVessels')}</h2>
+        <button class="btn btn-dark-outline btn-sm" data-action="close-vessel-modal">${t('buttons.close')}</button></div>
+      <div class="modal-body">${editing ? renderVesselForm() : renderVesselList()}</div>
+      ${editing ? `<div class="modal-foot">
+          <button class="btn btn-ghost" data-action="vessel-cancel-edit">${t('buttons.cancel')}</button>
+          <button class="btn btn-primary" data-action="vessel-save">${t('buttons.saveVessel')}</button>
+        </div>` : ''}
+    </div>
+  </div>`;
+}
+
+/* ==================== RENDER: PORT LIST MODAL ==================== */
+function renderPortModal(){
+  if(!state.ui.portModalOpen) return '';
+  const rows = state.ports.map((p,i) => `
+    <tr><td><input value="${escapeHtml(p)}" data-action-input="port-edit" data-index="${i}"></td>
+    <td><button class="btn btn-ghost btn-icon" data-action="port-remove" data-index="${i}">&times;</button></td></tr>`).join('');
+  return `
+  <div class="modal-overlay" data-overlay="port">
+    <div class="modal">
+      <div class="modal-head"><h2>${t('ports.title')}</h2>
+        <button class="btn btn-dark-outline btn-sm" data-action="close-port-modal">${t('buttons.close')}</button></div>
+      <div class="modal-body">
+        <div class="hint">${t('ports.hint')}</div>
+        ${rows ? `<table><tbody>${rows}</tbody></table>` : `<div class="hint">${t('ports.empty')}</div>`}
+        <div class="field-row" style="margin-top:12px; align-items:flex-end;">
+          <div class="field" style="max-width:260px;"><label>${t('labels.portName')}</label><input type="text" id="new-port-name"></div>
+          <button class="btn btn-ghost btn-sm" data-action="port-add" ${state.ports.length>=100?'disabled':''}>${t('buttons.addPortListEntry')}</button>
+        </div>
+      </div>
+    </div>
+  </div>`;
+}
+
+/* ==================== RENDER: APP ROOT ==================== */
+function renderApp(){
+  const hasVessels = state.vessels.length > 0;
+  document.getElementById('app').innerHTML = `
+    ${renderHeader()}
+    ${hasVessels ? renderToolbar() : ''}
+    <div class="main-grid">
+      ${hasVessels ? renderVoyageInputPanel() + renderResultsPanel() : `<div style="grid-column:1/-1;">${renderEmptyState()}</div>`}
+    </div>
+    <div class="footer-note no-print">${t('footer')}</div>
+    <div class="footer-note print-credit">${t('credit')}</div>
+    ${renderVesselModal()}
+    ${renderPortModal()}
+  `;
+  updatePortSuggestions();
+}
+function updatePortSuggestions(){
+  const dl = document.getElementById('port-suggestions');
+  if(dl) dl.innerHTML = state.ports.map(p => `<option value="${escapeHtml(p)}">`).join('');
+}
+function rerenderPreservingFocus(){
+  const active = document.activeElement;
+  let restore = null;
+  if(active && (active.tagName === 'INPUT' || active.tagName === 'SELECT')){
+    restore = {
+      actionInput: active.dataset.actionInput, path: active.dataset.path, target: active.dataset.target,
+      selStart: active.selectionStart, selEnd: active.selectionEnd, id: active.id
+    };
+  }
+  renderApp();
+  if(restore){
+    let sel = null;
+    if(restore.id) sel = document.getElementById(restore.id);
+    else if(restore.actionInput) sel = document.querySelector(`[data-action-input="${restore.actionInput}"]`);
+    else if(restore.path) sel = document.querySelector(`[data-path="${restore.path}"]${restore.target ? `[data-target="${restore.target}"]` : ''}`);
+    if(sel){
+      sel.focus();
+      if(sel.setSelectionRange && restore.selStart != null){
+        try{ sel.setSelectionRange(restore.selStart, restore.selEnd); }catch(err){}
+      }
+    }
+  }
+}
+
+/* ==================== ACTIONS ==================== */
+function runCalculate(){
+  const vessel = state.vessels.find(v => v.id === state.currentVoyage.vesselId);
+  const errs = validateVoyage(state.currentVoyage, vessel);
+  state.errors = errs;
+  if(Object.keys(errs).length){ state.lastResult = null; renderApp(); return; }
+  state.lastResult = calcVoyage(state.currentVoyage, vessel);
+  renderApp();
+}
+function saveCurrentVoyage(asNew){
+  const vessel = state.vessels.find(v => v.id === state.currentVoyage.vesselId);
+  const errs = validateVoyage(state.currentVoyage, vessel);
+  state.errors = errs;
+  if(Object.keys(errs).length){ renderApp(); return; }
+  if(asNew || !state.currentVoyage.name || !state.currentVoyage.name.trim()){
+    const proposed = asNew ? (state.currentVoyage.name ? state.currentVoyage.name + ' copy' : '') : (state.currentVoyage.name || '');
+    const name = window.prompt(t('labels.voyageName') + ':', proposed);
+    if(name === null || !name.trim()){ renderApp(); return; }
+    state.currentVoyage.name = name.trim();
+    if(asNew){ state.currentVoyage.id = uid(); state.currentVoyageSavedId = null; }
+  }
+  const result = calcVoyage(state.currentVoyage, vessel);
+  state.lastResult = result;
+  const snapshot = JSON.parse(JSON.stringify(state.currentVoyage));
+  snapshot.vesselNameSnapshot = vessel ? vessel.name : '';
+  snapshot.savedAt = Date.now();
+  snapshot.result = result;
+  const idx = state.voyages.findIndex(sv => sv.id === state.currentVoyage.id);
+  if(idx >= 0) state.voyages[idx] = snapshot; else state.voyages.push(snapshot);
+  state.currentVoyageSavedId = state.currentVoyage.id;
+  persistVoyages();
+  renderApp();
+}
+function handleCurrencyChange(el){
+  const newCur = el.value;
+  const v = state.currentVoyage;
+  if(newCur === v.currency){ return; }
+  if(window.confirm(t('confirm.currencySwitch'))){
+    v.currency = newCur;
+    v.fuelPrices = {};
+    const vessel = state.vessels.find(x => x.id === v.vesselId);
+    if(vessel) syncFuelPricesWithVessel(v, vessel);
+    v.canalFees = 0; v.portCharges = 0; v.agentFees = 0; v.bunkerSurcharge = 0; v.extraCosts = 0;
+    v.extraCostItems = (v.extraCostItems || []).map(it => ({...it, amount:0}));
+    v.lumpsumFreight = 0;
+    v.cargoLots = (v.cargoLots || []).map(l => ({...l, freightRate:0}));
+    v.demurrageRate = 0;
+    state.lastResult = null;
+    state.errors = {};
+  }
+  renderApp();
+}
+function genericBind(el){
+  const path = el.dataset.path;
+  const type = el.dataset.inputType;
+  const target = el.dataset.target === 'vessel' ? state.ui.vesselDraft : state.currentVoyage;
+  if(!target || !path) return;
+  let value;
+  if(type === 'number' || type === 'number-key'){
+    value = el.value === '' ? 0 : parseFloat(el.value);
+    if(isNaN(value)) value = 0;
+  } else {
+    value = el.value;
+  }
+  setPath(target, path, value);
+}
+
+function handleAction(action, el){
+  switch(action){
+    case 'set-lang':
+      state.settings.language = el.dataset.lang; persistSettings(); renderApp(); break;
+    case 'open-vessel-modal':
+      state.ui.vesselModalOpen = true; state.ui.vesselDraft = null; state.ui.vesselDraftErrors = {}; renderApp(); break;
+    case 'close-vessel-modal':
+      state.ui.vesselModalOpen = false; state.ui.vesselDraft = null; renderApp(); break;
+    case 'open-port-modal':
+      state.ui.portModalOpen = true; renderApp(); break;
+    case 'close-port-modal':
+      state.ui.portModalOpen = false; renderApp(); break;
+    case 'change-vessel': {
+      const id = el.value; state.currentVoyage.vesselId = id;
+      const vessel = state.vessels.find(v => v.id === id);
+      if(vessel) syncFuelPricesWithVessel(state.currentVoyage, vessel);
+      state.lastResult = null; state.errors = {};
+      renderApp(); break;
+    }
+    case 'load-voyage': {
+      const id = el.value;
+      if(!id){ break; }
+      const sv = state.voyages.find(x => x.id === id);
+      if(!sv) break;
+      const clone = JSON.parse(JSON.stringify(sv));
+      delete clone.vesselNameSnapshot; delete clone.savedAt; delete clone.result;
+      state.currentVoyage = clone;
+      state.currentVoyageSavedId = id;
+      state.errors = {};
+      const vessel = state.vessels.find(v => v.id === clone.vesselId);
+      state.lastResult = vessel ? calcVoyage(clone, vessel) : (sv.result || null);
+      renderApp(); break;
+    }
+    case 'delete-saved-voyage': {
+      if(!window.confirm(t('confirm.deleteVoyage'))) break;
+      state.voyages = state.voyages.filter(x => x.id !== state.currentVoyageSavedId);
+      persistVoyages();
+      state.currentVoyageSavedId = null;
+      renderApp(); break;
+    }
+    case 'new-voyage': {
+      const vesselId = state.currentVoyage.vesselId || (state.vessels[0] && state.vessels[0].id) || '';
+      state.currentVoyage = newVoyage(vesselId);
+      state.currentVoyageSavedId = null; state.lastResult = null; state.errors = {};
+      const vessel = state.vessels.find(v => v.id === vesselId);
+      if(vessel) syncFuelPricesWithVessel(state.currentVoyage, vessel);
+      renderApp(); break;
+    }
+    case 'add-port':
+      if(state.currentVoyage.itinerary.length < 10){ state.currentVoyage.itinerary.push(newPortStop(false)); renderApp(); }
+      break;
+    case 'remove-port': {
+      const idx = parseInt(el.dataset.index, 10);
+      state.currentVoyage.itinerary.splice(idx, 1);
+      if(state.currentVoyage.itinerary[0]) state.currentVoyage.itinerary[0].distanceFromPrev = 0;
+      renderApp(); break;
+    }
+    case 'add-lot':
+      if(state.currentVoyage.cargoLots.length < 3){ state.currentVoyage.cargoLots.push({grade:'',quantity:0,freightRate:0}); renderApp(); }
+      break;
+    case 'remove-lot': {
+      const idx = parseInt(el.dataset.index, 10);
+      state.currentVoyage.cargoLots.splice(idx, 1); renderApp(); break;
+    }
+    case 'add-fuel-grade': {
+      const input = document.getElementById('new-fuel-grade');
+      const g = input && normalizeGrade(input.value);
+      if(g){
+        if(!state.currentVoyage.fuelPrices) state.currentVoyage.fuelPrices = {};
+        if(!(g in state.currentVoyage.fuelPrices)) state.currentVoyage.fuelPrices[g] = 0;
+      }
+      renderApp(); break;
+    }
+    case 'add-cost-item':
+      state.currentVoyage.extraCostItems.push({description:'', amount:0}); renderApp(); break;
+    case 'remove-cost-item': {
+      const idx = parseInt(el.dataset.index, 10);
+      state.currentVoyage.extraCostItems.splice(idx, 1); renderApp(); break;
+    }
+    case 'calculate': runCalculate(); break;
+    case 'save-voyage': saveCurrentVoyage(false); break;
+    case 'save-voyage-as': saveCurrentVoyage(true); break;
+    case 'print-pdf': window.print(); break;
+
+    case 'vessel-new':
+      state.ui.vesselDraft = newVessel(); state.ui.vesselDraftErrors = {}; renderApp(); break;
+    case 'vessel-new-modal':
+      state.ui.vesselModalOpen = true; state.ui.vesselDraft = newVessel(); state.ui.vesselDraftErrors = {}; renderApp(); break;
+    case 'vessel-edit': {
+      const id = el.dataset.id; const v = state.vessels.find(x => x.id === id);
+      if(v){ state.ui.vesselDraft = JSON.parse(JSON.stringify(v)); state.ui.vesselDraftErrors = {}; renderApp(); }
+      break;
+    }
+    case 'vessel-duplicate': {
+      const id = el.dataset.id; const v = state.vessels.find(x => x.id === id);
+      if(v){
+        const copy = JSON.parse(JSON.stringify(v)); copy.id = uid(); copy.name = copy.name + ' (Copy)';
+        state.vessels.push(copy); persistVessels(); renderApp();
+      }
+      break;
+    }
+    case 'vessel-delete': {
+      const id = el.dataset.id;
+      if(!window.confirm(t('vessel.confirmDelete'))) break;
+      state.vessels = state.vessels.filter(x => x.id !== id);
+      persistVessels();
+      if(state.currentVoyage.vesselId === id) state.currentVoyage.vesselId = '';
+      renderApp(); break;
+    }
+    case 'vessel-cancel-edit':
+      state.ui.vesselDraft = null; renderApp(); break;
+    case 'vessel-save': {
+      normalizeVesselGrades(state.ui.vesselDraft);
+      const errs = validateVessel(state.ui.vesselDraft);
+      state.ui.vesselDraftErrors = errs;
+      if(Object.keys(errs).length){ renderApp(); break; }
+      const idx = state.vessels.findIndex(x => x.id === state.ui.vesselDraft.id);
+      if(idx >= 0) state.vessels[idx] = state.ui.vesselDraft; else state.vessels.push(state.ui.vesselDraft);
+      persistVessels();
+      if(state.currentVoyage.vesselId === state.ui.vesselDraft.id) syncFuelPricesWithVessel(state.currentVoyage, state.ui.vesselDraft);
+      if(!state.currentVoyage.vesselId && state.vessels.length === 1){
+        state.currentVoyage.vesselId = state.vessels[0].id;
+        syncFuelPricesWithVessel(state.currentVoyage, state.vessels[0]);
+      }
+      state.ui.vesselDraft = null;
+      renderApp(); break;
+    }
+    case 'vessel-add-row': {
+      const section = el.dataset.section; const includeSpeed = el.dataset.speed === '1';
+      const arr = getPath(state.ui.vesselDraft, section);
+      arr.push(includeSpeed ? newFuelConsumption() : newPortConsumption());
+      renderApp(); break;
+    }
+    case 'vessel-remove-row': {
+      const section = el.dataset.section; const idx = parseInt(el.dataset.index, 10);
+      const arr = getPath(state.ui.vesselDraft, section);
+      arr.splice(idx, 1); renderApp(); break;
+    }
+    case 'port-add': {
+      const input = document.getElementById('new-port-name');
+      const name = input && input.value.trim();
+      if(name && state.ports.length < 100 && !state.ports.includes(name)){ state.ports.push(name); persistPorts(); }
+      renderApp(); break;
+    }
+    case 'port-remove': {
+      const idx = parseInt(el.dataset.index, 10);
+      if(!window.confirm(t('ports.confirmDelete'))) break;
+      state.ports.splice(idx, 1); persistPorts(); renderApp(); break;
+    }
+  }
+}
+
+/* ==================== EVENT DELEGATION ==================== */
+function handleInputEvent(e){
+  const el = e.target;
+  if(el.dataset.actionInput === 'vessel-search'){ state.ui.vesselSearch = el.value; rerenderPreservingFocus(); return; }
+  if(el.dataset.actionInput === 'port-edit'){
+    const idx = parseInt(el.dataset.index, 10);
+    state.ports[idx] = el.value; persistPorts(); updatePortSuggestions(); return;
+  }
+  if(el.dataset.path){ genericBind(el); return; }
+}
+function handleChangeEvent(e){
+  const el = e.target;
+  if(el.dataset.action){ handleAction(el.dataset.action, el); return; }
+  if(el.dataset.inputType === 'currency'){ handleCurrencyChange(el); return; }
+  if(el.dataset.path){
+    genericBind(el);
+    const type = el.dataset.inputType;
+    if(type === 'select-rerender' || type === 'radio-rerender'){ renderApp(); }
+    return;
+  }
+}
+function handleClickEvent(e){
+  if(e.target.classList && e.target.classList.contains('modal-overlay')){
+    const overlay = e.target.dataset.overlay;
+    if(overlay === 'vessel'){ state.ui.vesselModalOpen = false; state.ui.vesselDraft = null; renderApp(); return; }
+    if(overlay === 'port'){ state.ui.portModalOpen = false; renderApp(); return; }
+  }
+  const btn = e.target.closest('[data-action]');
+  if(!btn) return;
+  handleAction(btn.dataset.action, btn);
+}
+
+/* ==================== INIT ==================== */
+function migrateFuelGradeNames(){
+  let changed = false;
+  state.vessels.forEach(v => {
+    const before = JSON.stringify(v);
+    normalizeVesselGrades(v);
+    if(JSON.stringify(v) !== before) changed = true;
+  });
+  if(changed) persistVessels();
+}
+function init(){
+  migrateFuelGradeNames();
+  const vessel = state.vessels.find(v => v.id === state.currentVoyage.vesselId);
+  if(vessel) syncFuelPricesWithVessel(state.currentVoyage, vessel);
+  document.addEventListener('input', handleInputEvent);
+  document.addEventListener('change', handleChangeEvent);
+  document.addEventListener('click', handleClickEvent);
+  renderApp();
+}
+init();
+</script>
+</body>
+</html>
