@@ -23,7 +23,6 @@ class VoyageEstimate(Base):
     laycan_end: Mapped[str | None] = mapped_column(String, nullable=True)
     freight_mode: Mapped[str] = mapped_column(String, nullable=False, default="per_mt")
     lumpsum_freight: Mapped[float] = mapped_column(Float, nullable=False, default=0)
-    sea_mode: Mapped[str] = mapped_column(String, nullable=False, default="laden")
     extra_sea_days: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     extra_costs: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     canal_fees: Mapped[float] = mapped_column(Float, nullable=False, default=0)
@@ -59,6 +58,8 @@ class EstimatePortStop(Base):
     port_name: Mapped[str] = mapped_column(String, nullable=False)
     stop_type: Mapped[str] = mapped_column(String, nullable=False)  # load / discharge
     distance_nm: Mapped[float] = mapped_column(Float, nullable=False, default=0)
+    # Condition of the leg sailed *to* this port (laden / ballast): picks speed and consumption.
+    condition: Mapped[str] = mapped_column(String, nullable=False, default="laden")
     cargo_quantity_mt: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     laytime_value: Mapped[float] = mapped_column(Float, nullable=False, default=0)
     laytime_unit: Mapped[str] = mapped_column(String, nullable=False, default="days")

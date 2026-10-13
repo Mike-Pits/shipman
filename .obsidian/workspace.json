@@ -191,6 +191,8 @@
   "active": "e1cfeacfa7ede99b",
   "lastOpenFiles": [
     "backend/shipman.db-journal",
+    "backend/shipman.db.bak-ifo180-fix",
+    "backend/shipman.db.bak-estimate-condition-migration",
     "backend/app/services/__pycache__/voyage_calc.cpython-314.pyc",
     "backend/app/services/__pycache__/fuel_grades.cpython-314.pyc",
     "backend/app/models/__pycache__/port.cpython-314.pyc",
@@ -199,8 +201,6 @@
     "frontend/src/pages/VoyageEstimatesPage.tsx.tmp.35166.8db9c3867775",
     "frontend/src/components/VoyageEstimateResults.tsx",
     "frontend/src/api/ports.ts",
-    "backend/shipman.db.bak-estimate-calculator-migration",
-    "backend/app/routers/ports.py",
     "backend/venv/lib/python3.14/site-packages/httpx-0.28.1.dist-info/licenses/LICENSE.md",
     "backend/venv/lib/python3.14/site-packages/starlette-1.8.0.dist-info/licenses/LICENSE.md",
     "backend/venv/lib/python3.14/site-packages/httpcore-1.0.9.dist-info/licenses/LICENSE.md",

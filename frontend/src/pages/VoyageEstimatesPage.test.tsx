@@ -32,29 +32,32 @@ const VESSEL = {
   name: 'MV Arctic',
   imo_number: '9123456',
   ice_class: 'Arc4',
-  sea_consumption: [{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }],
-  port_consumption: [{ kind: 'port_load', grade: 'VLSFO', consumption_mt_per_day: 5 }],
+  fuel_consumption_profiles: [
+    { id: 1, mode: 'laden', ifo_mt_per_day: 20, mgo_mt_per_day: 2, speed_kt: 12 },
+    { id: 2, mode: 'ballast', ifo_mt_per_day: 18, mgo_mt_per_day: 2, speed_kt: 13 },
+  ],
 }
 
 const RESULTS = {
   total_distance_nm: 1728,
   sea_days: 6,
+  sea_laden_days: 6,
+  sea_ballast_days: 0,
   port_days: 4,
   load_days: 2,
   discharge_days: 2,
   total_voyage_days: 10,
-  effective_sea_mode: 'laden',
-  fuel: { MGO: { quantity_mt: 166, cost: 116200 } },
-  total_fuel_cost: 116200,
+  fuel: { IFO: { quantity_mt: 130, cost: 65000 }, MGO: { quantity_mt: 22, cost: 19800 } },
+  total_fuel_cost: 84800,
   freight_revenue: 150000,
   other_costs: 20000,
   extra_items_total: 0,
   allowed_laytime_days: 4,
   excess_days: 0,
   demurrage: 0,
-  total_costs: 136200,
-  net_result: 13800,
-  tce_per_day: 1380,
+  total_costs: 104800,
+  net_result: 45200,
+  tce_per_day: 4520,
   warnings: [],
 }
 
@@ -67,7 +70,6 @@ const SAMPLE_ESTIMATE = {
   laycan_end: '2026-06-05',
   freight_mode: 'per_mt',
   lumpsum_freight: 0,
-  sea_mode: 'laden',
   extra_sea_days: 0,
   extra_costs: 0,
   canal_fees: 0,
@@ -80,17 +82,18 @@ const SAMPLE_ESTIMATE = {
   baseline_net_result: null,
   baseline_tce_per_day: null,
   port_stops: [
-    { port_name: 'Ust-Luga', stop_type: 'load', distance_nm: 0, cargo_quantity_mt: 5000, laytime_value: 2, laytime_unit: 'days', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
-    { port_name: 'Rotterdam', stop_type: 'discharge', distance_nm: 1728, cargo_quantity_mt: 5000, laytime_value: 48, laytime_unit: 'hours', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
+    { port_name: 'Ust-Luga', stop_type: 'load', distance_nm: 0, condition: 'ballast', cargo_quantity_mt: 5000, laytime_value: 2, laytime_unit: 'days', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
+    { port_name: 'Rotterdam', stop_type: 'discharge', distance_nm: 1728, condition: 'laden', cargo_quantity_mt: 5000, laytime_value: 48, laytime_unit: 'hours', laytime_basis: 'SHINC', rate_mt_per_day: 0 },
   ],
   cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 30 }],
-  fuel_prices: [{ grade: 'MGO', price_per_mt: 700 }],
+  fuel_prices: [{ grade: 'IFO', price_per_mt: 500 }, { grade: 'MGO', price_per_mt: 900 }],
   cost_items: [],
   results: RESULTS,
   warnings: [],
 }
 
 const baseHandlers = (estimates: unknown[]) => ({
+  '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
   '/voyage-estimates': [{ status: 200, body: estimates }],
   '/vessels': [{ status: 200, body: [VESSEL] }],
   '/ports': [{ status: 200, body: [{ id: 1, name: 'Ust-Luga' }] }],
@@ -104,13 +107,14 @@ describe('VoyageEstimatesPage', () => {
 
     expect(await screen.findByText('UL-RTM June')).toBeInTheDocument()
     expect(screen.getByText('Ust-Luga → Rotterdam')).toBeInTheDocument()
-    expect(screen.getByText(/1,?380 USD/)).toBeInTheDocument()
+    expect(screen.getByText(/4,?520 USD/)).toBeInTheDocument()
     expect(screen.getByText('10')).toBeInTheDocument()
   })
 
   it('lets the operator build a multi-port estimate and save it', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [] },
         { status: 201, body: SAMPLE_ESTIMATE },
@@ -134,7 +138,8 @@ describe('VoyageEstimatesPage', () => {
     await user.type(screen.getByLabelText('Cargo Grade 1'), 'gasoil')
     await user.type(screen.getByLabelText('Qty (MT) 1'), '5000')
     await user.type(screen.getByLabelText('Freight Rate 1'), '30')
-    await user.type(screen.getByLabelText('Price MGO'), '700')
+    await user.type(screen.getByLabelText('Price IFO'), '500')
+    await user.type(screen.getByLabelText('Price MGO'), '900')
     await user.click(screen.getByRole('button', { name: 'Save Estimate' }))
 
     const postCall = await waitFor(() => {
@@ -150,10 +155,11 @@ describe('VoyageEstimatesPage', () => {
       currency: 'USD',
       freight_mode: 'per_mt',
       cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 30 }],
-      fuel_prices: [{ grade: 'MGO', price_per_mt: 700 }],
+      fuel_prices: [{ grade: 'IFO', price_per_mt: 500 }, { grade: 'MGO', price_per_mt: 900 }],
     })
     expect(body.port_stops.map((s: { port_name: string }) => s.port_name)).toEqual(['Ust-Luga', 'Rotterdam'])
-    expect(body.port_stops[1]).toMatchObject({ stop_type: 'discharge', distance_nm: 1728 })
+    expect(body.port_stops[0]).toMatchObject({ stop_type: 'load', condition: 'ballast' })
+    expect(body.port_stops[1]).toMatchObject({ stop_type: 'discharge', distance_nm: 1728, condition: 'laden' })
     expect(await screen.findByRole('region', { name: 'Voyage Results' })).toBeInTheDocument()
   })
 
@@ -173,8 +179,11 @@ describe('VoyageEstimatesPage', () => {
     await user.click(screen.getByRole('button', { name: 'Calculate Voyage' }))
 
     const panel = await screen.findByRole('region', { name: 'Voyage Results' })
-    expect(within(panel).getByText(/1,?380 USD/)).toBeInTheDocument()
+    expect(within(panel).getByText(/4,?520 USD/)).toBeInTheDocument()
     expect(within(panel).getByText('MGO')).toBeInTheDocument()
+    expect(within(panel).getByText('IFO')).toBeInTheDocument()
+    expect(within(panel).getByText('Fuel')).toBeInTheDocument()
+    expect(within(panel).getByText('104,800 USD')).toBeInTheDocument()
     expect(within(panel).getByText('No demurrage — within laytime')).toBeInTheDocument()
     expect(fetchMock.mock.calls.some(([url]) => url.endsWith('/voyage-estimates'))).toBe(true) // initial list only
     expect(fetchMock.mock.calls.filter(([, o]) => o?.method === 'POST')).toHaveLength(1)
@@ -206,22 +215,76 @@ describe('VoyageEstimatesPage', () => {
     expect(JSON.parse(call[1]!.body as string)).toMatchObject({ freight_mode: 'lumpsum', lumpsum_freight: 200000, cargo_lots: [] })
   })
 
-  it('lists a price field for every grade in the vessel profile', async () => {
+  it('recalculates automatically as the itinerary is typed, without pressing Calculate', async () => {
     const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl(baseHandlers([]))
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    expect(screen.queryByRole('region', { name: 'Voyage Results' })).not.toBeInTheDocument()
+
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+
+    expect(await screen.findByRole('region', { name: 'Voyage Results' })).toBeInTheDocument()
+    const calls = fetchMock.mock.calls.filter(([url]) => url.includes('/calculate'))
+    expect(calls.length).toBeGreaterThan(0)
+    expect(JSON.parse(calls[calls.length - 1][1]!.body as string).port_stops[0].port_name).toBe('Ust-Luga')
+  })
+
+  it('gives each leg a condition that defaults from its type and can be overridden', async () => {
+    const user = userEvent.setup()
+    const fetchMock = mockFetchByUrl(baseHandlers([]))
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+    await user.click(screen.getByRole('button', { name: '+ Add Port' }))
+    await user.type(screen.getByLabelText('Port 2'), 'Rotterdam')
+
+    expect(screen.getByLabelText('Condition 1')).toBeDisabled() // nothing is sailed to the first port
+    expect(screen.getByLabelText('Condition 2')).toHaveValue('laden') // a new port is a discharge port
+    await user.selectOptions(screen.getByLabelText('Type 2'), 'load')
+    expect(screen.getByLabelText('Condition 2')).toHaveValue('ballast')
+    await user.selectOptions(screen.getByLabelText('Condition 2'), 'laden')
+
+    await waitFor(() => {
+      const calls = fetchMock.mock.calls.filter(([url]) => url.includes('/calculate'))
+      const last = JSON.parse(calls[calls.length - 1][1]!.body as string)
+      expect(last.port_stops[1]).toMatchObject({ stop_type: 'load', condition: 'laden' })
+    })
+  })
+
+  it('always offers IFO and MGO price fields', async () => {
     mockFetchByUrl(baseHandlers([]))
 
     render(<VoyageEstimatesPage />)
     await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
-    await user.selectOptions(screen.getByLabelText('Vessel'), '1')
 
+    expect(screen.getByLabelText('Price IFO')).toBeInTheDocument()
     expect(screen.getByLabelText('Price MGO')).toBeInTheDocument()
-    expect(screen.getByLabelText('Price VLSFO')).toBeInTheDocument()
+  })
+
+  it('explains in the results when the vessel has no speed for a leg condition', async () => {
+    const user = userEvent.setup()
+    mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: { ...RESULTS, warnings: ['missing_speed:ballast'] } }],
+      '/voyage-estimates': [{ status: 200, body: [] }],
+      '/vessels': [{ status: 200, body: [VESSEL] }],
+      '/ports': [{ status: 200, body: [] }],
+    })
+
+    render(<VoyageEstimatesPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+    await user.type(screen.getByLabelText('Port 1'), 'Ust-Luga')
+
+    expect(await screen.findByText(/no ballast speed on the Vessels page/i)).toBeInTheDocument()
   })
 
   it('lets the operator move an estimate into negotiation', async () => {
     const user = userEvent.setup()
     mockFetchByUrl({
       '/voyage-estimates/1/status': [{ status: 200, body: { ...SAMPLE_ESTIMATE, status: 'under_negotiation' } }],
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'under_negotiation' }] },
@@ -242,6 +305,7 @@ describe('VoyageEstimatesPage', () => {
     const user = userEvent.setup()
     mockFetchByUrl({
       '/voyage-estimates/1/status': [{ status: 200, body: { ...SAMPLE_ESTIMATE, status: 'declined' } }],
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'declined' }] },
@@ -262,6 +326,7 @@ describe('VoyageEstimatesPage', () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchByUrl({
       '/voyage-estimates/1/promote': [{ status: 201, body: { id: 9, fixture_type: 'voyage_charter', brokers: [] } }],
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 200, body: [{ ...SAMPLE_ESTIMATE, status: 'fixed', fixture_id: 9 }] },
@@ -316,9 +381,10 @@ describe('VoyageEstimatesPage', () => {
     const corrected = {
       ...SAMPLE_ESTIMATE,
       cargo_lots: [{ grade: 'gasoil', quantity_mt: 5000, freight_rate: 35 }],
-      results: { ...RESULTS, freight_revenue: 175000, net_result: 38800, tce_per_day: 3880 },
+      results: { ...RESULTS, freight_revenue: 175000, net_result: 70200, tce_per_day: 7020 },
     }
     const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 200, body: corrected },
@@ -345,12 +411,13 @@ describe('VoyageEstimatesPage', () => {
     })
     expect(putCall[0]).toContain('/voyage-estimates/1')
     expect(JSON.parse(putCall[1]!.body as string).cargo_lots[0].freight_rate).toBe(35)
-    expect(await screen.findAllByText(/3,?880 USD/)).toHaveLength(2) // list row + results panel
+    expect(await screen.findAllByText(/7,?020 USD/)).toHaveLength(2) // list row + results panel
   })
 
   it('duplicates an estimate under a "(copy)" name', async () => {
     const user = userEvent.setup()
     const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE] },
         { status: 201, body: { ...SAMPLE_ESTIMATE, id: 2, name: 'UL-RTM June (copy)' } },
@@ -379,6 +446,7 @@ describe('VoyageEstimatesPage', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true)
     const fixed = { ...SAMPLE_ESTIMATE, id: 2, name: 'Fixed one', status: 'fixed', fixture_id: 5 }
     const fetchMock = mockFetchByUrl({
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [
         { status: 200, body: [SAMPLE_ESTIMATE, fixed] },
         { status: 204, body: null },
@@ -421,6 +489,7 @@ describe('VoyageEstimatesPage', () => {
         { status: 201, body: { id: 3, name: 'Dudinka' } },
         { status: 200, body: [{ id: 3, name: 'Dudinka' }] },
       ],
+      '/voyage-estimates/calculate': [{ status: 200, body: RESULTS }],
       '/voyage-estimates': [{ status: 200, body: [] }],
       '/vessels': [{ status: 200, body: [] }],
     })

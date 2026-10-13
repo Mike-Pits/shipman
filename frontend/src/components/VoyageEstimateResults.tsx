@@ -9,7 +9,7 @@ const num = (v: number, digits = 3) =>
 
 function warningText(t: (k: string, o?: Record<string, string>) => string, code: string) {
   const [key, arg] = code.split(':')
-  return t(`voyageEstimates.warning_${key}`, { grade: arg ?? '' })
+  return t(`voyageEstimates.warning_${key}`, { grade: arg ?? '', mode: arg ? t(`voyageEstimates.mode_${arg}`) : '' })
 }
 
 export default function VoyageEstimateResults({
@@ -48,7 +48,8 @@ export default function VoyageEstimateResults({
 
       <h3>{t('voyageEstimates.timeBreakdown')}</h3>
       <div className="results-grid">
-        <StatCard label={t('voyageEstimates.timeSea')} value={num(results.sea_days)} />
+        <StatCard label={t('voyageEstimates.timeSeaLaden')} value={num(results.sea_laden_days)} />
+        <StatCard label={t('voyageEstimates.timeSeaBallast')} value={num(results.sea_ballast_days)} />
         <StatCard label={t('voyageEstimates.timeLoad')} value={num(results.load_days)} />
         <StatCard label={t('voyageEstimates.timeDischarge')} value={num(results.discharge_days)} />
       </div>

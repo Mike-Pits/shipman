@@ -1,13 +1,13 @@
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from app.schemas.common import Currency
-from app.services.fuel_grades import normalize_grade
 
 EstimateStatus = Literal["draft", "under_negotiation", "fixed", "declined"]
 FreightMode = Literal["per_mt", "lumpsum"]
-SeaMode = Literal["laden", "ballast", "eco"]
+Condition = Literal["laden", "ballast"]
+FuelGrade = Literal["IFO", "MGO"]
 StopType = Literal["load", "discharge"]
 LaytimeUnit = Literal["hours", "days", "mt_per_hour", "mt_per_day"]
 LaytimeBasis = Literal["CQD", "WIBON", "WIPON", "FIO", "SHINC", "SHEX"]
@@ -24,6 +24,7 @@ class PortStop(BaseModel):
     port_name: str = Field(min_length=1)
     stop_type: StopType
     distance_nm: float = NonNegative
+    condition: Condition = "laden"
     cargo_quantity_mt: float = NonNegative
     laytime_value: float = NonNegative
     laytime_unit: LaytimeUnit = "days"
@@ -42,13 +43,8 @@ class CargoLot(BaseModel):
 class FuelPrice(BaseModel):
     model_config = ConfigDict(from_attributes=True)
 
-    grade: str = Field(min_length=1)
+    grade: FuelGrade
     price_per_mt: float = Field(ge=0)
-
-    @field_validator("grade")
-    @classmethod
-    def _canonical_grade(cls, value: str) -> str:
-        return normalize_grade(value)
 
 
 class CostItem(BaseModel):
@@ -66,7 +62,6 @@ class VoyageEstimateCreate(BaseModel):
     laycan_end: str | None = None
     freight_mode: FreightMode = "per_mt"
     lumpsum_freight: float = NonNegative
-    sea_mode: SeaMode = "laden"
     extra_sea_days: float = NonNegative
     extra_costs: float = NonNegative
     canal_fees: float = NonNegative
@@ -95,11 +90,12 @@ class VoyageEstimateStatusUpdate(BaseModel):
 class EstimateResults(BaseModel):
     total_distance_nm: float
     sea_days: float
+    sea_laden_days: float
+    sea_ballast_days: float
     port_days: float
     load_days: float
     discharge_days: float
     total_voyage_days: float
-    effective_sea_mode: SeaMode
     fuel: dict[str, dict[str, float]]
     total_fuel_cost: float
     freight_revenue: float
@@ -125,7 +121,6 @@ class VoyageEstimateRead(BaseModel):
     laycan_end: str | None
     freight_mode: FreightMode
     lumpsum_freight: float
-    sea_mode: SeaMode
     extra_sea_days: float
     extra_costs: float
     canal_fees: float

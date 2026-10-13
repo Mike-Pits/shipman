@@ -6,12 +6,7 @@ from app.database import get_db
 from app.models.bunker_replenishment import BunkerReplenishment
 from app.models.daily_report import DailyReport
 from app.models.payment import Payment
-from app.models.vessel import (
-    FuelConsumptionProfile,
-    Vessel,
-    VesselPortConsumption,
-    VesselSeaConsumption,
-)
+from app.models.vessel import FuelConsumptionProfile, Vessel
 from app.models.vetting_inspection import VettingInspection
 from app.models.voyage import Voyage
 from app.models.voyage_estimate import VoyageEstimate
@@ -27,28 +22,16 @@ router = APIRouter(prefix="/vessels", tags=["vessels"])
 
 DUPLICATE_IMO_DETAIL = "A vessel with this IMO number already exists"
 
-_PROFILE_FIELDS = {"fuel_consumption_profiles", "sea_consumption", "port_consumption"}
-
-
-def _apply_calculator_profile(vessel: Vessel, payload: VesselCreate) -> None:
-    if payload.sea_consumption is not None:
-        vessel.sea_consumption = [VesselSeaConsumption(**r.model_dump()) for r in payload.sea_consumption]
-    if payload.port_consumption is not None:
-        vessel.port_consumption = [
-            VesselPortConsumption(**r.model_dump()) for r in payload.port_consumption
-        ]
-
 
 @router.post("", response_model=VesselRead, status_code=201)
 def create_vessel(payload: VesselCreate, db: Session = Depends(get_db)):
     vessel = Vessel(
-        **payload.model_dump(exclude=_PROFILE_FIELDS),
+        **payload.model_dump(exclude={"fuel_consumption_profiles"}),
         fuel_consumption_profiles=[
             FuelConsumptionProfile(**profile.model_dump())
             for profile in payload.fuel_consumption_profiles
         ],
     )
-    _apply_calculator_profile(vessel, payload)
     db.add(vessel)
     try:
         db.commit()
@@ -78,13 +61,12 @@ def update_vessel(vessel_id: int, payload: VesselCreate, db: Session = Depends(g
     if vessel is None:
         raise HTTPException(status_code=404, detail="Vessel not found")
 
-    for field, value in payload.model_dump(exclude=_PROFILE_FIELDS).items():
+    for field, value in payload.model_dump(exclude={"fuel_consumption_profiles"}).items():
         setattr(vessel, field, value)
     vessel.fuel_consumption_profiles = [
         FuelConsumptionProfile(**profile.model_dump())
         for profile in payload.fuel_consumption_profiles
     ]
-    _apply_calculator_profile(vessel, payload)
     try:
         db.commit()
     except IntegrityError as exc:

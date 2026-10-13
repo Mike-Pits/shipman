@@ -111,10 +111,10 @@ describe('VesselsPage', () => {
     const postCall = fetchMock.mock.calls.find(([, options]) => options?.method === 'POST')
     const body = JSON.parse(postCall![1].body as string)
     expect(body.fuel_consumption_profiles).toEqual([
-      { mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5 },
-      { mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5 },
-      { mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2 },
-      { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1 },
+      { mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5, speed_kt: null },
+      { mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5, speed_kt: null },
+      { mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2, speed_kt: null },
+      { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1, speed_kt: null },
     ])
   })
 
@@ -210,10 +210,10 @@ describe('VesselsPage', () => {
     expect(body.ice_class).toBe('Arc7')
     expect(body.name).toBe('SP Baltic Trader')
     expect(body.fuel_consumption_profiles).toEqual([
-      { mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5 },
-      { mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5 },
-      { mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2 },
-      { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1 },
+      { mode: 'laden', ifo_mt_per_day: 18.5, mgo_mt_per_day: 0.5, speed_kt: null },
+      { mode: 'ballast', ifo_mt_per_day: 16, mgo_mt_per_day: 0.5, speed_kt: null },
+      { mode: 'idle_anchor', ifo_mt_per_day: 2, mgo_mt_per_day: 0.2, speed_kt: null },
+      { mode: 'discharging', ifo_mt_per_day: 3.5, mgo_mt_per_day: 1, speed_kt: null },
     ])
   })
 
@@ -259,7 +259,7 @@ describe('VesselsPage', () => {
     expect(body.dwt).toBe(0)
     expect(body.ice_class).toBe('Arc4')
   })
-  it('lets the operator edit the voyage-calculator consumption profile and sends it with the PUT', async () => {
+  it('lets the operator enter laden and ballast service speed and sends it with the vessel', async () => {
     const user = userEvent.setup()
     const vessel = {
       id: 1,
@@ -275,9 +275,10 @@ describe('VesselsPage', () => {
       cargo_tank_capacity_cbm: 9800,
       ice_class: 'Arc4',
       engine_power_kw: 4500,
-      fuel_consumption_profiles: [],
-      sea_consumption: [{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }],
-      port_consumption: [],
+      fuel_consumption_profiles: [
+        { id: 1, mode: 'laden', ifo_mt_per_day: 20, mgo_mt_per_day: 2, speed_kt: 12 },
+        { id: 2, mode: 'ballast', ifo_mt_per_day: 18, mgo_mt_per_day: 2, speed_kt: null },
+      ],
     }
     const fetchMock = mockFetchSequence([
       { status: 200, body: [vessel] },
@@ -289,9 +290,7 @@ describe('VesselsPage', () => {
     await user.click(await screen.findByRole('button', { name: /^edit$/i }))
 
     expect(screen.getByLabelText('Laden Speed (kt)')).toHaveValue(12)
-    await user.click(screen.getByRole('button', { name: /add fuel grade — in port — loading/i }))
-    await user.type(screen.getByLabelText('In port — loading Fuel grade'), 'МГО')
-    await user.type(screen.getByLabelText('In port — loading Consumption (MT/day)'), '5')
+    await user.type(screen.getByLabelText('Ballast Speed (kt)'), '13.5')
     await user.click(screen.getByRole('button', { name: /update vessel/i }))
 
     const putCall = await waitFor(() => {
@@ -300,7 +299,9 @@ describe('VesselsPage', () => {
       return call
     })
     const body = JSON.parse(putCall[1].body as string)
-    expect(body.sea_consumption).toEqual([{ mode: 'laden', grade: 'MGO', speed_kt: 12, consumption_mt_per_day: 24 }])
-    expect(body.port_consumption).toEqual([{ kind: 'port_load', grade: 'МГО', consumption_mt_per_day: 5 }])
+    const byMode = Object.fromEntries(body.fuel_consumption_profiles.map((p: { mode: string }) => [p.mode, p]))
+    expect(byMode.laden.speed_kt).toBe(12)
+    expect(byMode.ballast.speed_kt).toBe(13.5)
+    expect(byMode.idle_anchor.speed_kt).toBeNull()
   })
 })

@@ -1,17 +1,22 @@
 """Preliminary voyage (TCE) calculation engine.
 
-Ported from the standalone `voyage-calculator.html`. Pure functions over duck-typed inputs: the
-`estimate` argument and its children may be a Pydantic payload or an ORM row — only the attributes
-read below are required. Day figures in the result are rounded to 3 decimals for display; every
-intermediate is unrounded.
+Originated in the standalone `voyage-calculator.html`. Pure functions over duck-typed inputs: the
+`estimate` argument and its children may be a Pydantic payload or an ORM row. Speed and fuel
+consumption come from the vessel's profile on the Vessels page:
+
+- each itinerary leg is sailed in its own condition (laden / ballast) at that condition's speed,
+  burning that condition's IFO and MGO per day;
+- time in a loading port burns the vessel's idle/anchor rate, in a discharge port the discharging
+  rate; extra sea days burn the laden rate.
+
+Day figures in the result are rounded to 3 decimals for display; intermediates are unrounded.
 """
 
-from collections import defaultdict
-
 from app.services.flexible_datetime import round_days
-from app.services.fuel_grades import normalize_grade
 
-SEA_MODES = ("laden", "ballast", "eco")
+FUEL_GRADES = ("IFO", "MGO")
+# Which vessel profile mode a stop's port time burns.
+PORT_MODE = {"load": "idle_anchor", "discharge": "discharging"}
 
 
 def _n(value) -> float:
@@ -42,52 +47,62 @@ def port_days(stop) -> float:
 def calculate_voyage(estimate, vessel) -> dict:
     """`vessel` may be None (estimate before a vessel is assigned): no sea time or fuel is computed."""
     stops = list(estimate.port_stops)
-    total_distance = sum(_n(s.distance_nm) for s in stops)
+    profiles = {p.mode: p for p in vessel.fuel_consumption_profiles} if vessel is not None else {}
+    warnings: list[str] = []
+    fuel_qty = {grade: 0.0 for grade in FUEL_GRADES}
 
-    sea_rows = []
-    effective_mode = estimate.sea_mode
+    def burn(mode: str, days: float) -> None:
+        profile = profiles.get(mode)
+        if profile is None:
+            if vessel is not None and days > 0:
+                warning = f"missing_profile:{mode}"
+                if warning not in warnings:
+                    warnings.append(warning)
+            return
+        fuel_qty["IFO"] += _n(profile.ifo_mt_per_day) * days
+        fuel_qty["MGO"] += _n(profile.mgo_mt_per_day) * days
+
+    total_distance = 0.0
+    leg_days = {"laden": 0.0, "ballast": 0.0}
+    for stop in stops:
+        distance = _n(stop.distance_nm)
+        total_distance += distance
+        if distance <= 0 or vessel is None:
+            continue
+        profile = profiles.get(stop.condition)
+        speed = _n(profile.speed_kt) if profile is not None else 0.0
+        if speed <= 0:
+            warning = f"missing_speed:{stop.condition}"
+            if warning not in warnings:
+                warnings.append(warning)
+            continue
+        # Knots are nautical miles per hour: distance / speed = hours.
+        days = distance / (speed * 24)
+        leg_days[stop.condition] += days
+        burn(stop.condition, days)
+
+    extra_days = _n(estimate.extra_sea_days)
     if vessel is not None:
-        sea_rows = [r for r in vessel.sea_consumption if r.mode == estimate.sea_mode]
-        if not sea_rows:
-            sea_rows = [r for r in vessel.sea_consumption if r.mode == "laden"]
-            effective_mode = "laden"
-    speed = _n(sea_rows[0].speed_kt) if sea_rows else 0.0
-    # Knots are nautical miles per hour: distance / speed = hours.
-    sea_days = (total_distance / (speed * 24) if speed > 0 else 0.0) + _n(estimate.extra_sea_days)
+        burn("laden", extra_days)
+    sea_days = leg_days["laden"] + leg_days["ballast"] + extra_days
 
     stop_days = [(s, port_days(s)) for s in stops]
     total_port_days = sum(d for _, d in stop_days)
+    load_days = sum(d for s, d in stop_days if s.stop_type == "load")
+    discharge_days = sum(d for s, d in stop_days if s.stop_type != "load")
+    if vessel is not None:
+        for stop, days in stop_days:
+            burn(PORT_MODE.get(stop.stop_type, "discharging"), days)
     total_days = sea_days + total_port_days
 
-    fuel_qty: dict[str, float] = defaultdict(float)
-    load_days = discharge_days = 0.0
-    if vessel is not None:
-        port_rows = defaultdict(list)
-        for row in vessel.port_consumption:
-            port_rows[row.kind].append(row)
-        for row in sea_rows:
-            fuel_qty[normalize_grade(row.grade)] += _n(row.consumption_mt_per_day) * sea_days
-        for stop, days in stop_days:
-            kind = "port_load" if stop.stop_type == "load" else "port_discharge"
-            for row in port_rows[kind]:
-                fuel_qty[normalize_grade(row.grade)] += _n(row.consumption_mt_per_day) * days
-        for row in port_rows["inerting"]:
-            fuel_qty[normalize_grade(row.grade)] += _n(row.consumption_mt_per_day) * sea_days
-    for stop, days in stop_days:
-        if stop.stop_type == "load":
-            load_days += days
-        else:
-            discharge_days += days
-
-    prices = {normalize_grade(p.grade): _n(p.price_per_mt) for p in estimate.fuel_prices}
+    prices = {p.grade: _n(p.price_per_mt) for p in estimate.fuel_prices}
     fuel = {}
     total_fuel_cost = 0.0
-    missing_prices = []
     for grade, qty in fuel_qty.items():
-        if not grade:
+        if qty <= 0:
             continue
         if grade not in prices:
-            missing_prices.append(grade)
+            warnings.append(f"missing_fuel_price:{grade}")
         cost = qty * prices.get(grade, 0.0)
         fuel[grade] = {"quantity_mt": round(qty, 3), "cost": round(cost, 2)}
         total_fuel_cost += cost
@@ -111,22 +126,18 @@ def calculate_voyage(estimate, vessel) -> dict:
     net = freight - total_costs
     tce = net / total_days if total_days > 0 else 0.0
 
-    warnings = []
     if vessel is None:
-        warnings.append("no_vessel")
-    elif effective_mode != estimate.sea_mode:
-        warnings.append("sea_mode_fallback")
-    for grade in missing_prices:
-        warnings.append(f"missing_fuel_price:{grade}")
+        warnings.insert(0, "no_vessel")
 
     return {
         "total_distance_nm": round(total_distance, 1),
         "sea_days": round_days(sea_days),
+        "sea_laden_days": round_days(leg_days["laden"]),
+        "sea_ballast_days": round_days(leg_days["ballast"]),
         "port_days": round_days(total_port_days),
         "load_days": round_days(load_days),
         "discharge_days": round_days(discharge_days),
         "total_voyage_days": round_days(total_days),
-        "effective_sea_mode": effective_mode,
         "fuel": fuel,
         "total_fuel_cost": round(total_fuel_cost, 2),
         "freight_revenue": round(freight, 2),

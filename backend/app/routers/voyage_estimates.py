@@ -57,7 +57,7 @@ def _to_read(estimate: VoyageEstimate, db: Session) -> VoyageEstimateRead:
 
 _SCALAR_FIELDS = {
     "name", "vessel_id", "currency", "laycan_start", "laycan_end", "freight_mode",
-    "lumpsum_freight", "sea_mode", "extra_sea_days", "extra_costs", "canal_fees",
+    "lumpsum_freight", "extra_sea_days", "extra_costs", "canal_fees",
     "port_charges", "agent_fees", "bunker_surcharge", "demurrage_rate",
 }
 

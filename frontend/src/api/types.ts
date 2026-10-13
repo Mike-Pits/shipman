@@ -6,27 +6,14 @@ export interface FuelConsumptionProfile {
   mode: FuelConsumptionMode
   ifo_mt_per_day: number
   mgo_mt_per_day: number
+  speed_kt?: number | null
 }
 
 export interface FuelConsumptionProfileRead extends FuelConsumptionProfile {
   id: number
 }
 
-export type SeaMode = 'laden' | 'ballast' | 'eco'
-export type PortConsumptionKind = 'port_load' | 'port_discharge' | 'inerting'
-
-export interface SeaConsumption {
-  mode: SeaMode
-  grade: string
-  speed_kt: number
-  consumption_mt_per_day: number
-}
-
-export interface PortConsumption {
-  kind: PortConsumptionKind
-  grade: string
-  consumption_mt_per_day: number
-}
+export type Condition = 'laden' | 'ballast'
 
 export interface VesselCreate {
   name: string
@@ -42,15 +29,11 @@ export interface VesselCreate {
   ice_class: string
   engine_power_kw: number
   fuel_consumption_profiles: FuelConsumptionProfile[]
-  sea_consumption?: SeaConsumption[]
-  port_consumption?: PortConsumption[]
 }
 
 export interface Vessel extends VesselCreate {
   id: number
   fuel_consumption_profiles: FuelConsumptionProfileRead[]
-  sea_consumption: SeaConsumption[]
-  port_consumption: PortConsumption[]
 }
 
 export interface Port {
@@ -339,6 +322,7 @@ export interface EstimatePortStop {
   port_name: string
   stop_type: StopType
   distance_nm: number
+  condition: Condition
   cargo_quantity_mt: number
   laytime_value: number
   laytime_unit: LaytimeUnit
@@ -352,8 +336,10 @@ export interface EstimateCargoLot {
   freight_rate: number
 }
 
+export type FuelGrade = 'IFO' | 'MGO'
+
 export interface EstimateFuelPrice {
-  grade: string
+  grade: FuelGrade
   price_per_mt: number
 }
 
@@ -370,7 +356,6 @@ export interface VoyageEstimateCreate {
   laycan_end: string | null
   freight_mode: FreightMode
   lumpsum_freight: number
-  sea_mode: SeaMode
   extra_sea_days: number
   extra_costs: number
   canal_fees: number
@@ -387,11 +372,12 @@ export interface VoyageEstimateCreate {
 export interface EstimateResults {
   total_distance_nm: number
   sea_days: number
+  sea_laden_days: number
+  sea_ballast_days: number
   port_days: number
   load_days: number
   discharge_days: number
   total_voyage_days: number
-  effective_sea_mode: SeaMode
   fuel: Record<string, { quantity_mt: number; cost: number }>
   total_fuel_cost: number
   freight_revenue: number

@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import {
   calculateVoyageEstimate,
@@ -14,6 +14,7 @@ import { listVessels } from '../api/vessels'
 import Badge, { type BadgeTone } from '../components/ui/Badge'
 import VoyageEstimateResults from '../components/VoyageEstimateResults'
 import type {
+  Condition,
   EstimateCargoLot,
   EstimatePortStop,
   EstimateResults,
@@ -21,6 +22,7 @@ import type {
   LaytimeBasis,
   LaytimeUnit,
   Port,
+  FuelGrade,
   Vessel,
   VoyageEstimate,
   VoyageEstimateCreate,
@@ -37,10 +39,15 @@ const LAYTIME_UNITS: { value: LaytimeUnit; key: string }[] = [
 ]
 const LAYTIME_BASES: LaytimeBasis[] = ['CQD', 'WIBON', 'WIPON', 'FIO', 'SHINC', 'SHEX']
 
-const newStop = (): EstimatePortStop => ({
+// A load port is reached in ballast, a discharge port laden — the operator can override either.
+const DEFAULT_CONDITION: Record<EstimatePortStop['stop_type'], Condition> = { load: 'ballast', discharge: 'laden' }
+const FUEL_GRADES: FuelGrade[] = ['IFO', 'MGO']
+
+const newStop = (type: EstimatePortStop['stop_type'] = 'load'): EstimatePortStop => ({
   port_name: '',
-  stop_type: 'load',
+  stop_type: type,
   distance_nm: 0,
+  condition: DEFAULT_CONDITION[type],
   cargo_quantity_mt: 0,
   laytime_value: 0,
   laytime_unit: 'days',
@@ -57,7 +64,6 @@ const emptyForm = (): VoyageEstimateCreate => ({
   laycan_end: '',
   freight_mode: 'per_mt',
   lumpsum_freight: 0,
-  sea_mode: 'laden',
   extra_sea_days: 0,
   extra_costs: 0,
   canal_fees: 0,
@@ -93,7 +99,6 @@ const toCreate = (est: VoyageEstimate): VoyageEstimateCreate => ({
   laycan_end: est.laycan_end ?? '',
   freight_mode: est.freight_mode,
   lumpsum_freight: est.lumpsum_freight,
-  sea_mode: est.sea_mode,
   extra_sea_days: est.extra_sea_days,
   extra_costs: est.extra_costs,
   canal_fees: est.canal_fees,
@@ -106,14 +111,6 @@ const toCreate = (est: VoyageEstimate): VoyageEstimateCreate => ({
   fuel_prices: est.fuel_prices.map((p) => ({ ...p })),
   cost_items: est.cost_items.map((i) => ({ ...i })),
 })
-
-const vesselGrades = (vessel: Vessel | undefined): string[] => {
-  if (!vessel) return []
-  const grades = new Set<string>()
-  vessel.sea_consumption.forEach((r) => grades.add(r.grade))
-  vessel.port_consumption.forEach((r) => grades.add(r.grade))
-  return [...grades]
-}
 
 const money = (v: number) => v.toLocaleString(undefined, { maximumFractionDigits: 0 })
 
@@ -128,7 +125,6 @@ export default function VoyageEstimatesPage() {
   const [promotingId, setPromotingId] = useState<number | null>(null)
   const [charterer, setCharterer] = useState('')
   const [promoteGrade, setPromoteGrade] = useState('')
-  const [newGrade, setNewGrade] = useState('')
   const [newPort, setNewPort] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -143,17 +139,8 @@ export default function VoyageEstimatesPage() {
   const vessel = vessels.find((v) => v.id === form.vessel_id)
   const vesselName = (id: number | null) => (id == null ? '' : (vessels.find((v) => v.id === id)?.name ?? `#${id}`))
 
-  // Prices are listed for every grade the vessel burns plus any grade added by hand.
-  const priceGrades = useMemo(() => {
-    const grades = new Set(vesselGrades(vessel))
-    form.fuel_prices.forEach((p) => grades.add(p.grade))
-    return [...grades]
-  }, [vessel, form.fuel_prices])
-
-  const set = <K extends keyof VoyageEstimateCreate>(key: K, value: VoyageEstimateCreate[K]) => {
+  const set = <K extends keyof VoyageEstimateCreate>(key: K, value: VoyageEstimateCreate[K]) =>
     setForm((f) => ({ ...f, [key]: value }))
-    setResults(null)
-  }
   const numField = (key: keyof VoyageEstimateCreate) => (e: React.ChangeEvent<HTMLInputElement>) =>
     set(key, Number(e.target.value) as never)
   const textField = (key: keyof VoyageEstimateCreate) => (e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement>) =>
@@ -161,9 +148,11 @@ export default function VoyageEstimatesPage() {
 
   const updateStop = (i: number, patch: Partial<EstimatePortStop>) =>
     set('port_stops', form.port_stops.map((s, j) => (j === i ? { ...s, ...patch } : s)))
+  const changeStopType = (i: number, type: EstimatePortStop['stop_type']) =>
+    updateStop(i, { stop_type: type, condition: DEFAULT_CONDITION[type] })
   const updateLot = (i: number, patch: Partial<EstimateCargoLot>) =>
     set('cargo_lots', form.cargo_lots.map((l, j) => (j === i ? { ...l, ...patch } : l)))
-  const setPrice = (grade: string, value: string) => {
+  const setPrice = (grade: FuelGrade, value: string) => {
     const others = form.fuel_prices.filter((p) => p.grade !== grade)
     set('fuel_prices', value === '' ? others : [...others, { grade, price_per_mt: Number(value) }])
   }
@@ -188,7 +177,6 @@ export default function VoyageEstimatesPage() {
       cost_items: [],
       cargo_lots: f.cargo_lots.map((l) => ({ ...l, freight_rate: 0 })),
     }))
-    setResults(null)
   }
 
   const payloadFromForm = (): VoyageEstimateCreate => ({
@@ -199,6 +187,23 @@ export default function VoyageEstimatesPage() {
       form.freight_mode === 'per_mt' ? form.cargo_lots.filter((l) => l.quantity_mt > 0 || l.freight_rate > 0) : [],
     cost_items: form.cost_items.filter((i) => i.description.trim() || i.amount > 0),
   })
+
+  const calcSeq = useRef(0)
+  const locked = editingId !== null && estimates.find((e) => e.id === editingId)?.status === 'fixed'
+
+  // Recalculate as the operator types: the results panel always reflects the current inputs.
+  // An incomplete form (no port name yet, no cargo lot…) simply shows no results.
+  useEffect(() => {
+    if (locked || form.port_stops.some((s) => !s.port_name.trim())) return
+    const seq = ++calcSeq.current
+    const timer = setTimeout(() => {
+      calculateVoyageEstimate({ ...payloadFromForm(), name: form.name || '—' })
+        .then((r) => seq === calcSeq.current && setResults(r))
+        .catch(() => seq === calcSeq.current && setResults(null))
+    }, 400)
+    return () => clearTimeout(timer)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [form, locked])
 
   const handleEdit = (est: VoyageEstimate) => {
     setError(null)
@@ -220,7 +225,7 @@ export default function VoyageEstimatesPage() {
   const handleCalculate = async () => {
     setError(null)
     try {
-      setResults(await calculateVoyageEstimate(payloadFromForm()))
+      setResults(await calculateVoyageEstimate({ ...payloadFromForm(), name: form.name || '—' }))
     } catch (err) {
       fail(err, 'Failed to calculate')
     }
@@ -337,7 +342,6 @@ export default function VoyageEstimatesPage() {
 
   const route = (est: VoyageEstimate) => est.port_stops.map((s) => s.port_name).join(' → ')
   const canProgress = (status: EstimateStatus) => status === 'draft' || status === 'under_negotiation'
-  const locked = editingId !== null && estimates.find((e) => e.id === editingId)?.status === 'fixed'
 
   return (
     <div>
@@ -500,6 +504,7 @@ export default function VoyageEstimatesPage() {
                   <th>#</th>
                   <th>{t('voyageEstimates.port')}</th>
                   <th>{t('voyageEstimates.stopType')}</th>
+                  <th>{t('voyageEstimates.condition')}</th>
                   <th>{t('voyageEstimates.distance')}</th>
                   <th>{t('voyageEstimates.stopCargo')}</th>
                   <th>{t('voyageEstimates.laytime')}</th>
@@ -526,10 +531,21 @@ export default function VoyageEstimatesPage() {
                       <select
                         aria-label={`${t('voyageEstimates.stopType')} ${i + 1}`}
                         value={s.stop_type}
-                        onChange={(e) => updateStop(i, { stop_type: e.target.value as EstimatePortStop['stop_type'] })}
+                        onChange={(e) => changeStopType(i, e.target.value as EstimatePortStop['stop_type'])}
                       >
                         <option value="load">{t('voyageEstimates.typeLoad')}</option>
                         <option value="discharge">{t('voyageEstimates.typeDischarge')}</option>
+                      </select>
+                    </td>
+                    <td>
+                      <select
+                        aria-label={`${t('voyageEstimates.condition')} ${i + 1}`}
+                        value={s.condition}
+                        disabled={i === 0}
+                        onChange={(e) => updateStop(i, { condition: e.target.value as Condition })}
+                      >
+                        <option value="laden">{t('voyageEstimates.conditionLaden')}</option>
+                        <option value="ballast">{t('voyageEstimates.conditionBallast')}</option>
                       </select>
                     </td>
                     <td>
@@ -618,7 +634,7 @@ export default function VoyageEstimatesPage() {
           <button
             type="button"
             disabled={form.port_stops.length >= MAX_PORT_STOPS}
-            onClick={() => set('port_stops', [...form.port_stops, newStop()])}
+            onClick={() => set('port_stops', [...form.port_stops, newStop('discharge')])}
           >
             {t('voyageEstimates.addPort')}
           </button>
@@ -626,15 +642,8 @@ export default function VoyageEstimatesPage() {
 
         <fieldset disabled={locked}>
           <legend>{t('voyageEstimates.sectionSeaPassage')}</legend>
+          <p className="hint">{t('voyageEstimates.seaPassageHint')}</p>
           <div className="field-grid">
-            <label>
-              {t('voyageEstimates.seaMode')}
-              <select value={form.sea_mode} onChange={textField('sea_mode')}>
-                <option value="laden">{t('vessels.modeLaden')}</option>
-                <option value="ballast">{t('vessels.modeBallast')}</option>
-                <option value="eco">{t('vessels.modeEco')}</option>
-              </select>
-            </label>
             <label>
               {t('voyageEstimates.extraSeaDays')}
               <input type="number" step="any" min="0" value={form.extra_sea_days || ''} placeholder="0" onChange={numField('extra_sea_days')} />
@@ -734,7 +743,7 @@ export default function VoyageEstimatesPage() {
           <legend>{t('voyageEstimates.sectionFuelPrices')}</legend>
           <p className="hint">{t('voyageEstimates.fuelPricesHint')}</p>
           <div className="field-grid">
-            {priceGrades.map((grade) => (
+            {FUEL_GRADES.map((grade) => (
               <label key={grade}>
                 {grade} ({form.currency}/MT)
                 <input
@@ -747,25 +756,6 @@ export default function VoyageEstimatesPage() {
                 />
               </label>
             ))}
-          </div>
-          <div className="inline-row">
-            <input
-              aria-label={t('voyageEstimates.newFuelGrade')}
-              placeholder={t('voyageEstimates.newFuelGrade')}
-              value={newGrade}
-              onChange={(e) => setNewGrade(e.target.value)}
-            />
-            <button
-              type="button"
-              onClick={() => {
-                const grade = newGrade.trim()
-                if (!grade || priceGrades.includes(grade)) return
-                set('fuel_prices', [...form.fuel_prices, { grade, price_per_mt: 0 }])
-                setNewGrade('')
-              }}
-            >
-              {t('voyageEstimates.addFuelGrade')}
-            </button>
           </div>
         </fieldset>
 
