@@ -138,4 +138,25 @@ describe('DashboardPage', () => {
     expect(screen.getByText(/SP Baltic: Ballast Passage/)).toBeInTheDocument()
     expect(screen.getByText(/SP Dudinka: No Record/)).toBeInTheDocument()
   })
+  it('shows how long ago the last backup was, in danger tone when overdue', async () => {
+    mockFetchByUrl({
+      '/vessels': [{ status: 200, body: [] }],
+      '/voyages': [{ status: 200, body: [] }],
+      '/reports/fleet-pnl': [
+        { status: 200, body: { start_date: '2026-06-01', end_date: '2026-06-30', revenue: 0, costs: 0, net_result: 0, voyage_count: 0, currency: 'RUB' } },
+      ],
+      '/reports/da-reconciliation': [{ status: 200, body: [] }],
+      '/reports/vetting-status': [{ status: 200, body: [] }],
+      '/reports/claims-status': [{ status: 200, body: [] }],
+      '/reports/current-vessel-status': [{ status: 200, body: [] }],
+      '/service/status': [{ status: 200, body: { last_backup: { name: 'x.db' }, last_backup_age_hours: 120 } }],
+    })
+
+    render(<DashboardPage />)
+    await waitFor(() => expect(screen.queryByText('Loading…')).not.toBeInTheDocument())
+
+    const card = screen.getByText('Last Backup').closest('.stat-card')!
+    expect(card).toHaveTextContent('5 d ago')
+    expect(card.querySelector('.tone-danger')).not.toBeNull()
+  })
 })

@@ -4,6 +4,7 @@ import {
   Anchor,
   BarChart3,
   Calculator,
+  DatabaseBackup,
   ClipboardList,
   CreditCard,
   FileSpreadsheet,
@@ -38,6 +39,7 @@ import ClaimsPage from './pages/ClaimsPage'
 import ReportsPage from './pages/ReportsPage'
 import AuditLogPage from './pages/AuditLogPage'
 import DashboardPage from './pages/DashboardPage'
+import ServicePage from './pages/ServicePage'
 import './App.css'
 
 function App() {
@@ -131,6 +133,14 @@ function App() {
           </NavLink>
         </div>
 
+        <div className="nav-group">
+          <div className="nav-group-header">{t('nav.groupService')}</div>
+          <NavLink to="/service" className="nav-link">
+            <DatabaseBackup size={16} />
+            {t('nav.service')}
+          </NavLink>
+        </div>
+
         <div className="nav-footer">
           <Anchor size={16} className="nav-brand-icon" />
           <LanguageToggle />
@@ -155,6 +165,7 @@ function App() {
           <Route path="/claims" element={<ClaimsPage />} />
           <Route path="/reports" element={<ReportsPage />} />
           <Route path="/audit-log" element={<AuditLogPage />} />
+          <Route path="/service" element={<ServicePage />} />
           <Route path="*" element={<VesselsPage />} />
         </Routes>
       </main>

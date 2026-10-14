@@ -1,10 +1,11 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { getClaimsStatus, getCurrentVesselStatus, getDaReconciliation, getFleetPnl, getFleetVettingStatus } from '../api/reports'
+import { getServiceStatus } from '../api/service'
 import { listVessels } from '../api/vessels'
 import { listVoyages } from '../api/voyages'
 import StatCard from '../components/ui/StatCard'
-import type { CurrentVesselStatusRow, FleetPnl } from '../api/types'
+import type { CurrentVesselStatusRow, FleetPnl, ServiceStatus } from '../api/types'
 
 const NOT_EMPLOYED_STATUS_KEYS: Record<string, string> = {
   ballast_passage: 'voyages.purposeBallastPassage',
@@ -29,6 +30,7 @@ export default function DashboardPage() {
   const [vettingIssues, setVettingIssues] = useState(0)
   const [openClaims, setOpenClaims] = useState(0)
   const [notEmployedVessels, setNotEmployedVessels] = useState<CurrentVesselStatusRow[]>([])
+  const [service, setService] = useState<ServiceStatus | null>(null)
 
   useEffect(() => {
     const [start, end] = monthToDateRange()
@@ -42,6 +44,8 @@ export default function DashboardPage() {
       ),
       getClaimsStatus().then((rows) => setOpenClaims(rows.length)),
       getCurrentVesselStatus().then((rows) => setNotEmployedVessels(rows.filter((r) => r.status !== 'employment'))),
+      // A failing status check must never take the dashboard down with it.
+      getServiceStatus().then(setService).catch(() => setService(null)),
     ]).finally(() => setLoading(false))
   }, [])
 
@@ -80,6 +84,20 @@ export default function DashboardPage() {
               .map((v) => `${v.vessel_name}: ${t(NOT_EMPLOYED_STATUS_KEYS[v.status])}`)
               .join(', ')}
           />
+          {service && (
+            <StatCard
+              label={t('dashboard.lastBackup')}
+              value={
+                service.last_backup_age_hours === null
+                  ? t('service.never')
+                  : service.last_backup_age_hours < 24
+                    ? t('dashboard.today')
+                    : t('dashboard.daysAgo', { days: Math.floor(service.last_backup_age_hours / 24) })
+              }
+              tone={service.last_backup_age_hours === null || service.last_backup_age_hours > 48 ? 'danger' : 'success'}
+              sub={t('dashboard.lastBackupHint')}
+            />
+          )}
         </div>
       )}
     </div>

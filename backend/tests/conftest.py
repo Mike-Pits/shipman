@@ -1,3 +1,7 @@
+import os
+
+os.environ.setdefault("SHIPMAN_DISABLE_AUTO_BACKUP", "1")
+
 import pytest
 from fastapi.testclient import TestClient
 from sqlalchemy import create_engine

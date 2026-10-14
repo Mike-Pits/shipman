@@ -79,6 +79,8 @@ on Windows:
 - `backend/.env` → `backend/.env`
 - `backend/shipman.db` → `backend/shipman.db`
 
+**Using the Service page instead of copying files:** on the Ubuntu machine open **Service → Backups**, click *Back up now* and then *Download* on the new backup. On Windows start the app with an empty database, open **Service**, use *Import backup file…* to upload that download, and *Restore* it (type `RESTORE`). The app verifies the file's integrity before and after, and keeps a safety copy of whatever was there.
+
 If you'd rather start Windows with a clean slate instead of copying the live
 DB, skip the `shipman.db` copy — the app creates a fresh empty one
 automatically on first run (`Base.metadata.create_all` in

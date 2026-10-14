@@ -35,6 +35,7 @@ This document supersedes [`SRS.md`](SRS.md) (v1, general-cargo/bulk fleet). It i
    4.15 Audit Log
    4.16 Invoicing
    4.17 Voyage Purpose: Ballast Passage & Drydock/Repair
+   4.18 Service: Backup, Restore & Maintenance
 5. Data Dictionary
 6. Non-Functional Requirements
 7. User Interface Requirements
@@ -358,6 +359,22 @@ Not every day a vessel is on the books is spent under a fixture. A vessel can be
 
 
 **FR-72:** Every day count in the system — hire invoice quantity (FR-62), off-hire duration and deduction (FR-35), voyage duration and off-hire/earning days in TCE (FR-48), and the Fleet Utilization day buckets (FR-70) — is rounded to **3 decimals**, matching how accounting writes day counts on invoices. Amounts are computed from the rounded figure (quantity × unit price), so a printed invoice line always multiplies out exactly. Hire/off-hire period boundaries are accepted as `YYYY-MM-DD`, `YYYY-MM-DD HH:MM[:SS]`, or with `24:00` meaning midnight at the end of that day.
+### 4.18 Service: Backup, Restore & Maintenance
+
+The operator is gradually entering real business data, so protecting it is a first-class feature, not a developer chore. A **Service** page (own navigation group) provides the tools below. Public documentation of commercial ship-management suites on this point is thin; the design follows the database-centred practice visible in IMOS's administration material (the database is the asset to protect, with off-site recovery) and SQLite's own backup guidance.
+
+**FR-73:** **Back up now** creates a timestamped copy of the database using SQLite's online backup API (never a raw file copy of a live database), then verifies *the copy*: `integrity_check` and `foreign_key_check`. A copy that fails integrity is discarded. Each backup has a JSON manifest beside it: time, kind, size, SHA-256 checksum, SQLite version, verification result and per-table row counts. Backups can be downloaded and deleted.
+
+**FR-74:** **Automatic backup**: while the app runs, a verified backup is made at startup (after a short delay) and then whenever the newest backup is over 24 hours old. Retention applies to automatic backups only: the newest per day for *N* days (default 14) and the newest per month for *M* months (default 12). Manual and imported backups are never pruned automatically. The backup folder (default: `backups/` next to the database), automatic on/off, and the two retention figures are editable on the page; a folder that cannot be written to is rejected. The Dashboard shows "Last Backup" and turns red when there is none or it is over 48 hours old.
+
+**FR-75:** **Restore**: any listed backup can be restored after the operator types `RESTORE`. Before replacing the data the system verifies the backup (checksum against its manifest, integrity check) and takes a `pre-restore` safety backup of the current data. A backup lacking columns the current version of the app needs (i.e. made by an older version) is refused with an explanation; tables that are simply missing are recreated. **Import** brings a database file from another machine (e.g. the Windows migration) into the backup folder, verified, ready to restore.
+
+**FR-76:** **Compact** (SQLite `VACUUM`) reclaims unused space; a `pre-compact` backup is taken first. Pre-restore and pre-compact safety backups keep the newest 10 each.
+
+**FR-77:** **Health check** reports database integrity, rows whose foreign key points at a missing record (orphans) per table pair, size and reclaimable space, journal mode and per-table row counts. **Export all data to Excel** writes one worksheet per table — a plain-data copy that opens without the app.
+
+**FR-78:** Service actions are not audit-logged (they operate on the database itself, not on business records); the backup manifests are their record.
+
 ---
 
 ## 5. Data Dictionary (Key Tables)

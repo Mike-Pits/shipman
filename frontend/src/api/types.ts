@@ -568,3 +568,66 @@ export interface Invoice extends InvoiceCreate {
   total_amount_due_rub: number | null
   lines: InvoiceLine[]
 }
+
+export type BackupKind = 'manual' | 'auto' | 'pre-restore' | 'pre-compact' | 'imported' | 'external'
+
+export interface FkViolation {
+  table: string
+  parent: string
+  rows: number
+}
+
+export interface BackupEntry {
+  name: string
+  kind: BackupKind
+  created_at: string
+  size_bytes: number
+  sha256: string | null
+  integrity_ok: boolean | null
+  fk_violations: FkViolation[]
+  row_counts: Record<string, number>
+  restore_blockers: string[]
+}
+
+export interface ServiceStatus {
+  database_path: string
+  database_size_bytes: number
+  backup_dir: string
+  backup_dir_is_default: boolean
+  auto_backup_enabled: boolean
+  keep_daily: number
+  keep_monthly: number
+  backup_count: number
+  last_backup: BackupEntry | null
+  last_backup_age_hours: number | null
+}
+
+export interface ServiceSettings {
+  backup_dir: string | null
+  auto_backup_enabled: boolean
+  keep_daily: number
+  keep_monthly: number
+}
+
+export interface HealthReport {
+  integrity_ok: boolean
+  integrity_problems: string[]
+  fk_violations: FkViolation[]
+  row_counts: Record<string, number>
+  size_bytes: number
+  reclaimable_bytes: number
+  journal_mode: string
+  sqlite_version: string
+  checked_at: string
+}
+
+export interface CompactResult {
+  size_before: number
+  size_after: number
+  safety_backup: string
+}
+
+export interface RestoreResult {
+  restored: string
+  safety_backup: string
+}
